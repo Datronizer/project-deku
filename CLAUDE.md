@@ -58,11 +58,12 @@ Create a `.env` file in `backend/`:
 ```
 GEMINI_API_KEY=
 ELEVENLABS_API_KEY=
-GOOGLE_CLOUD_VISION_API_KEY=
 AUTH0_DOMAIN=
 AUTH0_CLIENT_ID=
 AUTH0_CLIENT_SECRET=
 ```
+
+Google Cloud Vision uses Application Default Credentials (ADC) — no API key needed. For local dev run `gcloud auth application-default login`. For production (Vultr), set `GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json`.
 
 Create a `.env` file in `desktop/`:
 
@@ -97,6 +98,20 @@ npm run build     # production build → dist/
 # backend/
 uvicorn main:app --reload
 ```
+
+## Implementation Notes
+
+**Gemini SDK:** Use `google-genai` (new), NOT `google-generativeai` (deprecated, prints FutureWarning). Import as `from google import genai`; async via `client.aio.models.generate_content(...)`.
+
+**Backend → Desktop push:** Backend POSTs `DialoguePayload` JSON to `http://127.0.0.1:7777/dialogue` (Node `http` server in `electron/main.ts`). Main process calls `win.setIgnoreMouseEvents(false)` then `win.webContents.send('show-dialogue', payload)`. Dismiss via `ipcMain.on('dismiss-dialogue')` which restores `setIgnoreMouseEvents(true, { forward: true })`.
+
+**Audio delivery:** ElevenLabs TTS returns a `data:audio/mpeg;base64,...` URI in `DialoguePayload.audioUrl` — no file serving needed, plays directly in renderer.
+
+**Character assets:** `desktop/public/characters/<characterName>/<expression>.png` — expressions: `neutral`, `mad`, `smug`, `surprised`. Currently have `klee/smug.png`.
+
+**Tailwind:** v4 via `@tailwindcss/vite` plugin (already installed in `desktop/`).
+
+**Backend modules:** `config.py` (pydantic-settings), `models.py` (shared Pydantic types), `services/vision.py`, `services/gemini.py`, `services/elevenlabs_tts.py`, `services/desktop.py`, `routers/analyze.py`, `main.py`.
 
 ## Git Conventions
 

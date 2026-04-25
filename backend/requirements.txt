@@ -1,2 +1,8 @@
 fastapi[standard]
 uvicorn
+google-genai
+google-cloud-vision
+elevenlabs
+httpx
+pydantic-settings
+python-dotenv
