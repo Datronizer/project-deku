@@ -11,8 +11,11 @@
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.2.4",
+    "active-win": "^8.2.1",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "screenshot-desktop": "^1.15.4",
+    "uiohook-napi": "^1.5.5"
   },
   "devDependencies": {
     "@types/react": "^18.2.64",
