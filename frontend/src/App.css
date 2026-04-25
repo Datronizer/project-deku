@@ -182,3 +182,13 @@
     border-right-color: var(--border);
   }
 }
+
+/* Agent Section Styling */
+#agent-section {
+  width: 100%;
+  padding: 40px 20px;
+  background: linear-gradient(180deg, transparent 0%, rgba(102, 126, 234, 0.05) 100%);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}

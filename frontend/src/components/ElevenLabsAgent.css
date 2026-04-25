@@ -1,0 +1,80 @@
+.elevenlabs-agent-wrapper {
+  width: 100%;
+  padding: 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 600px;
+}
+
+.agent-container {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 20px;
+  padding: 40px;
+  max-width: 600px;
+  width: 100%;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  text-align: center;
+  color: white;
+}
+
+.agent-container h2 {
+  margin: 0 0 10px 0;
+  font-size: 28px;
+  font-weight: 600;
+  color: white;
+}
+
+.agent-container p {
+  margin: 0 0 30px 0;
+  font-size: 16px;
+  opacity: 0.9;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* ElevenLabs widget container styling */
+elevenlabs-convai {
+  display: flex;
+  justify-content: center;
+  margin: 20px auto;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .elevenlabs-agent-wrapper {
+    min-height: auto;
+    padding: 10px;
+  }
+
+  .agent-container {
+    padding: 30px 20px;
+    border-radius: 15px;
+  }
+
+  .agent-container h2 {
+    font-size: 24px;
+  }
+
+  .agent-container p {
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .elevenlabs-agent-wrapper {
+    padding: 5px;
+  }
+
+  .agent-container {
+    padding: 20px 15px;
+    border-radius: 12px;
+  }
+
+  .agent-container h2 {
+    font-size: 20px;
+  }
+
+  .agent-container p {
+    font-size: 13px;
+  }
+}

@@ -2,6 +2,8 @@ import { useState } from 'react'
 import reactLogo from './assets/react.svg'
 import viteLogo from './assets/vite.svg'
 import heroImg from './assets/hero.png'
+import { ElevenLabsAgent } from './components/ElevenLabsAgent'
+import './components/ElevenLabsAgent.css'
 import './App.css'
 
 function App() {
@@ -115,6 +117,13 @@ function App() {
 
       <div className="ticks"></div>
       <section id="spacer"></section>
+
+      <section id="agent-section">
+        <ElevenLabsAgent 
+          agentId="agent_9201kq1ncxtqf3papmrfkdgmhpge"
+          title="Talk to Project Kacchan Agent"
+        />
+      </section>
     </>
   )
 }
