@@ -81,7 +81,8 @@ class GemmaSummarizer {
 }
 const require$1 = createRequire(import.meta.url);
 const summarizer = new GemmaSummarizer();
-const INTERVAL_MS = 3e4;
+const MIN_INTERVAL_MS = 5 * 6e4;
+const MAX_INTERVAL_MS = 10 * 6e4;
 const MAX_WINDOW_HISTORY = 8;
 let keyCount = 0;
 let mouseClicks = 0;
@@ -118,7 +119,13 @@ async function startCapture() {
     } catch {
     }
   }, 3e3);
-  setInterval(() => void runCycle(), INTERVAL_MS);
+  const scheduleNext = () => {
+    const delay = MIN_INTERVAL_MS + Math.random() * (MAX_INTERVAL_MS - MIN_INTERVAL_MS);
+    setTimeout(() => {
+      void runCycle().then(scheduleNext);
+    }, delay);
+  };
+  scheduleNext();
   console.log("[deku] capture started");
 }
 async function triggerCycle() {
@@ -134,15 +141,12 @@ function getDebugState() {
     lastCycleTime
   };
 }
-async function captureScreenshot() {
-  return takeScreenshot();
-}
 async function runCycle() {
   const log = {
     keyCount,
     mouseClicks,
     windowTitles: [...windowTitles],
-    durationSeconds: INTERVAL_MS / 1e3
+    durationSeconds: MAX_INTERVAL_MS / 1e3
   };
   resetLog();
   const [summary, screenshot] = await Promise.all([
@@ -282,12 +286,7 @@ app.whenReady().then(() => {
   });
   globalShortcut.register("CommandOrControl+Shift+8", () => {
     console.log("[deku] screenshot trigger");
-    void captureScreenshot().then((screenshotB64) => {
-      if (win) {
-        win.setIgnoreMouseEvents(false);
-        win.webContents.send("show-debug", { ...getDebugState(), screenshotB64 });
-      }
-    });
+    void triggerCycle();
   });
   globalShortcut.register("CommandOrControl+Shift+7", () => {
     console.log("[deku] debug screen");

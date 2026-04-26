@@ -1,3 +1,5 @@
+import { useEffect } from 'react'
+
 interface DebugState {
   keyCount: number
   mouseClicks: number
@@ -14,6 +16,12 @@ interface Props {
 }
 
 export function DebugScreen({ state, onClose }: Props) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
+
   return (
     <div
       className="fixed inset-0 pointer-events-auto flex items-center justify-center bg-black/60"
@@ -69,7 +77,7 @@ export function DebugScreen({ state, onClose }: Props) {
           </div>
         )}
 
-        <div className="mt-4 text-green-700 text-xs text-center">click outside or ✕ to close</div>
+        <div className="mt-4 text-green-700 text-xs text-center">esc · click outside · ✕ to close</div>
       </div>
     </div>
   )

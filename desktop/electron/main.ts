@@ -138,15 +138,10 @@ app.whenReady().then(() => {
     void triggerCycle()
   })
 
-  // Ctrl+Shift+8 — take screenshot and show debug overlay with it
+  // Ctrl+Shift+8 — force an immediate analysis cycle (screenshot → backend)
   globalShortcut.register('CommandOrControl+Shift+8', () => {
     console.log('[deku] screenshot trigger')
-    void captureScreenshot().then(screenshotB64 => {
-      if (win) {
-        win.setIgnoreMouseEvents(false)
-        win.webContents.send('show-debug', { ...getDebugState(), screenshotB64 })
-      }
-    })
+    void triggerCycle()
   })
 
   // Ctrl+Shift+7 — toggle debug overlay (no screenshot)

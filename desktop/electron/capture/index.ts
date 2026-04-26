@@ -7,7 +7,8 @@ const require = createRequire(import.meta.url)
 // Swap to SimpleSummarizer here if Gemma is causing problems
 const summarizer: Summarizer = new GemmaSummarizer()
 
-const INTERVAL_MS = 30_000
+const MIN_INTERVAL_MS = 5 * 60_000
+const MAX_INTERVAL_MS = 10 * 60_000
 const MAX_WINDOW_HISTORY = 8
 
 let keyCount = 0
@@ -48,8 +49,12 @@ export async function startCapture() {
     } catch { /* ignore */ }
   }, 3_000)
 
-  // 30s analysis cycle
-  setInterval(() => void runCycle(), INTERVAL_MS)
+  // random 5–10 min analysis cycle
+  const scheduleNext = () => {
+    const delay = MIN_INTERVAL_MS + Math.random() * (MAX_INTERVAL_MS - MIN_INTERVAL_MS)
+    setTimeout(() => { void runCycle().then(scheduleNext) }, delay)
+  }
+  scheduleNext()
 
   console.log('[deku] capture started')
 }
@@ -78,7 +83,7 @@ async function runCycle() {
     keyCount,
     mouseClicks,
     windowTitles: [...windowTitles],
-    durationSeconds: INTERVAL_MS / 1000,
+    durationSeconds: MAX_INTERVAL_MS / 1000,
   }
   resetLog()
 
