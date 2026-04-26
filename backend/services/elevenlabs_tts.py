@@ -10,7 +10,7 @@ def synthesize(text: str) -> str:
         _client.text_to_speech.convert(
             voice_id=settings.elevenlabs_voice_id,
             text=text,
-            model_id="eleven_flash_v2_5",
+            model_id="eleven_v3",
             output_format="mp3_44100_128",
         )
     )

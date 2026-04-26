@@ -1,16 +1,45 @@
 import { useState } from 'react'
 import type { DebugState } from '../types'
 import { useEscapeKey } from '../hooks/useEscapeKey'
+import { resetAgentMemory } from '../services/conversation'
 
 interface Props {
   debugState: DebugState
   onClose: () => void
 }
 
+function Shortcut({ keyCombo, label }: { keyCombo: string; label: string }) {
+  return (
+    <>
+      <span className="text-green-500 font-bold">{keyCombo}</span>
+      <span className="text-green-300">{label}</span>
+    </>
+  )
+}
+
+function Row({ label, value }: { label: string; value: string | number }) {
+  return (
+    <>
+      <span className="text-green-600 text-xs">{label}</span>
+      <span className="text-green-300 truncate text-xs">{value}</span>
+    </>
+  )
+}
+
 export function SettingsScreen({ debugState, onClose }: Props) {
   const [debugOpen, setDebugOpen] = useState(false)
+  const [isResetting, setIsResetting] = useState(false)
+  const [resetDone, setResetDone] = useState(false)
 
   useEscapeKey(onClose)
+
+  const handleReset = async () => {
+    setIsResetting(true)
+    await resetAgentMemory()
+    setIsResetting(false)
+    setResetDone(true)
+    setTimeout(() => setResetDone(false), 2000)
+  }
 
   return (
     <div
@@ -33,6 +62,33 @@ export function SettingsScreen({ debugState, onClose }: Props) {
         </div>
 
         <div className="px-6 py-4 space-y-6">
+          {/* Shortcuts section */}
+          <div>
+            <div className="text-green-700 text-xs uppercase tracking-widest mb-3">shortcuts</div>
+            <div className="grid grid-cols-[1fr_2fr] gap-y-2 text-xs">
+              <Shortcut keyCombo="Ctrl+Shift+9" label="force cycle (T2)" />
+              <Shortcut keyCombo="Ctrl+Shift+8" label="force screenshot (T3)" />
+              <Shortcut keyCombo="Ctrl+Shift+6" label="force text-only (T1)" />
+              <Shortcut keyCombo="Ctrl+Shift+7" label="toggle settings" />
+              <Shortcut keyCombo="Ctrl+Shift+0" label="panic (quit)" />
+            </div>
+          </div>
+
+          {/* Actions section */}
+          <div className="border-t border-green-900 pt-4">
+            <div className="text-green-700 text-xs uppercase tracking-widest mb-3">actions</div>
+            <button
+              onClick={handleReset}
+              disabled={isResetting}
+              className="w-full bg-red-900/20 hover:bg-red-900/40 border border-red-700/50 text-red-400 text-xs py-2 rounded transition-all active:scale-95 disabled:opacity-50"
+            >
+              {isResetting ? 'RESETTING...' : resetDone ? '✓ MEMORY CLEARED' : 'RESET AGENT MEMORY'}
+            </button>
+            <p className="text-[10px] text-green-800 mt-2 italic">
+              Clears Bakugou's short-term memory (helpful if he gets stuck on a topic).
+            </p>
+          </div>
+
           {/* Debug section (collapsible) */}
           <div className="border-t border-green-900 pt-4">
             <button
@@ -90,14 +146,5 @@ export function SettingsScreen({ debugState, onClose }: Props) {
         </div>
       </div>
     </div>
-  )
-}
-
-function Row({ label, value }: { label: string; value: string | number }) {
-  return (
-    <>
-      <span className="text-green-600 text-xs">{label}</span>
-      <span className="text-green-300 truncate text-xs">{value}</span>
-    </>
   )
 }

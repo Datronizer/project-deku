@@ -124,13 +124,14 @@ function checkTier3(title: string) {
 }
 
 // ── Exports ────────────────────────────────────────────────────────────────
-export async function triggerCycle() {
+export async function triggerCycle(tier: 1 | 2 | 3 = 2) {
   const log = snapshotLog((T2_MIN_MS + T2_MAX_MS) / 2)
   resetLog()
-  return runCycle(log, 2)
+  return runCycle(log, tier)
 }
 
 export function getDebugState() {
+// ... (omitted for brevity in replace call, but I must provide full context)
   const now = Date.now()
   return {
     keyCount,
@@ -162,6 +163,9 @@ async function runCycle(log: EventLog, tier: 1 | 2 | 3) {
   console.log(`[deku] tier${tier} — "${summary}"`)
 
   // Tier 1 skips screenshot (text-only, cheapest)
+  if (tier !== 1) {
+    console.log(`[deku] tier${tier} — screenshot firing`)
+  }
   const screenshot = tier === 1 ? '' : await takeScreenshot()
   
   if (tier !== 1 && !screenshot) {

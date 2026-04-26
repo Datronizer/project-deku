@@ -162,10 +162,10 @@ function checkTier3(title) {
     return;
   }
 }
-async function triggerCycle() {
+async function triggerCycle(tier = 2) {
   const log = snapshotLog((T2_MIN_MS + T2_MAX_MS) / 2);
   resetLog();
-  return runCycle(log, 2);
+  return runCycle(log, tier);
 }
 function getDebugState() {
   const now = Date.now();
@@ -190,6 +190,9 @@ async function runCycle(log, tier) {
   lastCycleTime = (/* @__PURE__ */ new Date()).toISOString();
   const activeWindow = log.windowTitles.at(-1) ?? "unknown";
   console.log(`[deku] tier${tier} — "${summary}"`);
+  if (tier !== 1) {
+    console.log(`[deku] tier${tier} — screenshot firing`);
+  }
   const screenshot = tier === 1 ? "" : await takeScreenshot();
   if (tier !== 1 && !screenshot) {
     console.warn(`[deku] tier${tier} — screenshot is empty, vision API will be skipped in backend`);
@@ -341,12 +344,16 @@ app.whenReady().then(() => {
   createTray();
   void startCapture();
   globalShortcut.register("CommandOrControl+Shift+9", () => {
-    console.log("[deku] manual trigger");
-    void triggerCycle();
+    console.log("[deku] manual trigger (T2)");
+    void triggerCycle(2);
   });
   globalShortcut.register("CommandOrControl+Shift+8", () => {
-    console.log("[deku] screenshot trigger");
-    void triggerCycle();
+    console.log("[deku] screenshot trigger (T3)");
+    void triggerCycle(3);
+  });
+  globalShortcut.register("CommandOrControl+Shift+6", () => {
+    console.log("[deku] text trigger (T1)");
+    void triggerCycle(1);
   });
   globalShortcut.register("CommandOrControl+Shift+7", () => {
     console.log("[deku] settings screen");

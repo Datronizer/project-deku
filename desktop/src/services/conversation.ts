@@ -15,3 +15,11 @@ export async function sendUserMessageToAgent(userText: string): Promise<void> {
     console.error('[conversation] error:', err)
   }
 }
+
+export async function resetAgentMemory(): Promise<void> {
+  try {
+    await fetch(`${BACKEND_URL}/analyze/reset-agent`, { method: 'POST' })
+  } catch (err) {
+    console.error('[conversation] reset-agent failed:', err)
+  }
+}

@@ -134,14 +134,20 @@ app.whenReady().then(() => {
 
   // Ctrl+Shift+9 — force an immediate cycle
   globalShortcut.register('CommandOrControl+Shift+9', () => {
-    console.log('[deku] manual trigger')
-    void triggerCycle()
+    console.log('[deku] manual trigger (T2)')
+    void triggerCycle(2)
   })
 
   // Ctrl+Shift+8 — force an immediate analysis cycle (screenshot → backend)
   globalShortcut.register('CommandOrControl+Shift+8', () => {
-    console.log('[deku] screenshot trigger')
-    void triggerCycle()
+    console.log('[deku] screenshot trigger (T3)')
+    void triggerCycle(3)
+  })
+
+  // Ctrl+Shift+6 — force a text-only cycle
+  globalShortcut.register('CommandOrControl+Shift+6', () => {
+    console.log('[deku] text trigger (T1)')
+    void triggerCycle(1)
   })
 
   // Ctrl+Shift+7 — toggle settings/debug overlay

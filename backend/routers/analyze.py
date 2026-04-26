@@ -3,7 +3,7 @@ import asyncio
 from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
 from models import ActivityPayload, AnalyzeResponse, DialoguePayload
-from services import vision, elevenlabs_agent, elevenlabs_tts, desktop, elevenlabs_conversation, twitter_poster
+from services import vision, elevenlabs_agent, elevenlabs_tts, desktop, elevenlabs_conversation, twitter_poster, gemini
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -42,22 +42,27 @@ async def analyze(payload: ActivityPayload, background: BackgroundTasks):
         len(payload.screenshot_b64) * 3 // 4 // 1024 if payload.screenshot_b64 else 0,
     )
 
-    try:
-        if payload.screenshot_b64:
-            vision_context = await vision.describe_screenshot(payload.screenshot_b64)
-        else:
-            vision_context = "No screenshot provided."
-    except Exception as e:
-        logger.error("[analyze] vision failed, continuing without it: %s", e)
-        vision_context = f"Vision API unavailable: {e}"
-
-    try:
-        decision = await elevenlabs_agent.decide(
-            payload.summary, vision_context, payload.active_window, tier=payload.tier
-        )
-    except Exception as e:
-        logger.error("[analyze] elevenlabs_agent.decide failed: %s", e)
-        return AnalyzeResponse(triggered=False)
+    # Strategy: Use Gemini for rich analysis if we have a screenshot or if tier is high.
+    # Otherwise, fallback to the standard decision logic.
+    decision = None
+    if payload.screenshot_b64 or payload.tier == 3:
+        try:
+            analysis = await gemini.analyze_screen(payload.summary, payload.screenshot_b64)
+            decision = await elevenlabs_agent.decide_with_analysis(analysis.critique, analysis.expression)
+        except Exception as e:
+            logger.warning("[analyze] gemini analysis failed, falling back to vision: %s", e)
+            # Continue to fallback logic below
+    
+    if not decision:
+        try:
+            # Fallback to Vision API description + standard decide for tier 1, no-screenshot tier 2, or gemini failure
+            vision_context = await vision.describe_screenshot(payload.screenshot_b64) if payload.screenshot_b64 else "No screenshot."
+            decision = await elevenlabs_agent.decide(
+                payload.summary, vision_context, payload.active_window, tier=payload.tier
+            )
+        except Exception as e:
+            logger.error("[analyze] fallback analysis failed: %s", e)
+            return AnalyzeResponse(triggered=False)
 
     # Force triggered for Tier 1 and Tier 3 (safety net)
     if payload.tier in (1, 3):
@@ -112,7 +117,14 @@ async def trigger(background: BackgroundTasks):
 async def conversation_init():
     """Clear conversation history and start a fresh session."""
     elevenlabs_conversation.reset_conversation()
+    elevenlabs_agent.reset_history()
     return {"status": "ok", "history_length": 0}
+
+@router.post("/reset-agent")
+async def reset_agent():
+    """Clear the agent's rolling memory (tiered triggers)."""
+    elevenlabs_agent.reset_history()
+    return {"status": "ok"}
 
 
 @router.post("/conversation/reset")

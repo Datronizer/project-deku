@@ -37,11 +37,11 @@ export function Portrait({ characterName, expression }: Props) {
   }
 
   return (
-    <div className="flex-shrink-0 w-40 h-48 relative">
+    <div className="flex-shrink-0 w-48 h-56 relative bg-black dark:bg-black light:bg-white border-4 border-white dark:border-white light:border-black rounded-lg overflow-hidden shadow-2xl">
       <img
         src={candidates[0]}
         alt={`${characterName} ${shown}`}
-        className={`w-full h-full object-contain drop-shadow-2xl transition-opacity duration-[120ms] ${visible ? 'opacity-100' : 'opacity-0'}`}
+        className={`w-full h-full object-cover transition-opacity duration-[120ms] ${visible ? 'opacity-100' : 'opacity-0'}`}
         draggable={false}
         onError={handleError}
       />

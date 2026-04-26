@@ -40,8 +40,9 @@ async def send_user_message(user_input: str) -> dict:
     result = await _client.conversational_ai.agents.simulate_conversation(
         agent_id=settings.elevenlabs_agent_id,
         simulation_specification=ConversationSimulationSpecification(
-            simulated_user_config=AgentConfig(first_message=user_input),
-            **({"partial_conversation_history": _history[:-1]} if len(_history) > 1 else {}),
+            agent_config=AgentConfig(first_message=""),
+            simulated_user_config=AgentConfig(first_message=""),
+            partial_conversation_history=_history,
         ),
         new_turns_limit=1,
     )

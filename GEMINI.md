@@ -47,10 +47,28 @@ Project Deku is a "disruptive" desktop agent that breaks user autopilot by obser
 - **Backend:** `cd backend && pytest` (Use `-k "not gemma"` to skip local model tests).
 - **Desktop:** `cd desktop && npm run test` (Vitest).
 
-### Implementation Details
-- **Overlay UI:** The Electron window is frameless and transparent. It uses `setIgnoreMouseEvents` to toggle interactivity.
-- **Audio:** ElevenLabs audio is delivered as base64 data URIs and played directly in the renderer.
-- **Screen Awareness:** Screen capture -> Vision API -> Gemini Orchestrator.
+## Project Features & Interaction
+
+### Keyboard Shortcuts
+The following shortcuts are active globally:
+- `Ctrl+Shift+9`: Force a Tier 2 (Standard) cycle.
+- `Ctrl+Shift+8`: Force a Tier 3 (Screenshot/Vision) cycle.
+- `Ctrl+Shift+7`: Toggle Settings/Debug Overlay.
+- `Ctrl+Shift+6`: Force a Tier 1 (Text-only) cycle.
+- `Ctrl+Shift+0`: Panic Button (Quit application).
+
+### Dialogue System
+- **High-Contrast UI:** Full-width bottom-docked dialogue box with solid black/white backgrounds and prominent borders for maximum visibility.
+- **Interactivity:** Uses `setIgnoreMouseEvents(false)` when dialogue or settings are shown to allow mouse interaction.
+- **Voice Reply:** Integrated Web Speech API support. Users can click the microphone icon to record a reply, which is transcribed and sent to the ElevenLabs agent.
+- **Auto-Close:** Dialogue boxes close after a timeout, but this timer is paused while the user is actively typing or recording a response.
+
+### AI Orchestration
+- **Tiered Intervention:**
+    - **Tier 1:** Text-only, periodic surprise.
+    - **Tier 2:** Standard screen observer (screenshot + Vision).
+    - **Tier 3:** Urgent window detection or manual force-screenshot.
+- **Hackathon Context:** Both Gemini (Analysis) and ElevenLabs (Agent) are instructed with `_DEMO_CONTEXT` to respond with higher intensity and 3-4 sentence lengths for better demo impact.
 
 ## Project Structure
 - `backend/`: FastAPI application, AI services, and routers.
