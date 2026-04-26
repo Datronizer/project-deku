@@ -1,8 +1,11 @@
 import json
+import logging
 from google import genai
 from google.genai import types
 from config import settings
 from models import Expression
+
+logger = logging.getLogger(__name__)
 
 _client = genai.Client(api_key=settings.gemini_api_key)
 
@@ -41,13 +44,25 @@ Decide whether to interrupt the user right now.
 - Return JSON matching this schema: {json.dumps(_SCHEMA)}
 """
 
-    resp = await _client.aio.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=[_SYSTEM, prompt],
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=_SCHEMA,
-        ),
-    )
+    logger.info("[gemini] calling decide — window=%r summary=%.80s", active_window, summary)
+    try:
+        resp = await _client.aio.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[_SYSTEM, prompt],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=_SCHEMA,
+            ),
+        )
+    except Exception:
+        logger.exception("[gemini] generate_content failed")
+        raise
 
-    return json.loads(resp.text)
+    decision = json.loads(resp.text)
+    logger.info(
+        "[gemini] decision: triggered=%s expression=%s text=%.120s",
+        decision.get("triggered"),
+        decision.get("expression"),
+        decision.get("text", ""),
+    )
+    return decision

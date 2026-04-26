@@ -1,6 +1,9 @@
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routers import analyze
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s:     %(name)s — %(message)s")
 
 app = FastAPI(title="project-deku backend")
 
