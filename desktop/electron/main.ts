@@ -1,8 +1,9 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, globalShortcut, Tray, Menu, nativeImage } from 'electron'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import http from 'node:http'
+import { startCapture, triggerCycle } from './capture/index.js'
 
 const require = createRequire(import.meta.url)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -18,6 +19,7 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 
 const DIALOGUE_PORT = 7777
 
 let win: BrowserWindow | null
+let tray: Tray | null = null
 
 function createWindow() {
   win = new BrowserWindow({
@@ -45,6 +47,30 @@ function createWindow() {
   }
 }
 
+function createTray() {
+  // Blank 1×1 transparent icon — replace with a real icon asset if desired
+  const icon = nativeImage.createFromDataURL(
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+  )
+  tray = new Tray(icon)
+  tray.setToolTip('deku')
+
+  const menu = Menu.buildFromTemplate([
+    {
+      label: 'Trigger Now',
+      click: () => { void triggerCycle() },
+    },
+    { type: 'separator' },
+    {
+      label: 'Quit',
+      click: () => app.quit(),
+    },
+  ])
+
+  tray.setContextMenu(menu)
+  tray.on('click', () => tray?.popUpContextMenu())
+}
+
 // When renderer dismisses dialogue, restore mouse passthrough
 ipcMain.on('dismiss-dialogue', () => {
   win?.setIgnoreMouseEvents(true, { forward: true })
@@ -64,7 +90,6 @@ function startDialogueServer() {
       try {
         const payload = JSON.parse(body)
         if (win) {
-          // Capture mouse events so the close button is clickable
           win.setIgnoreMouseEvents(false)
           win.webContents.send('show-dialogue', payload)
         }
@@ -96,4 +121,22 @@ app.on('activate', () => {
 app.whenReady().then(() => {
   createWindow()
   startDialogueServer()
+  createTray()
+  void startCapture()
+
+  // Ctrl+Shift+9 — force an immediate cycle
+  globalShortcut.register('CommandOrControl+Shift+9', () => {
+    console.log('[deku] manual trigger')
+    void triggerCycle()
+  })
+
+  // Ctrl+Shift+0 — panic button
+  globalShortcut.register('CommandOrControl+Shift+0', () => {
+    console.log('[deku] panic button pressed — quitting')
+    app.quit()
+  })
+})
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll()
 })

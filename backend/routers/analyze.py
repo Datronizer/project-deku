@@ -30,6 +30,29 @@ async def analyze(payload: ActivityPayload, background: BackgroundTasks):
     return AnalyzeResponse(triggered=True, dialogue=dialogue)
 
 
+@router.post("/trigger", response_model=AnalyzeResponse)
+async def trigger(background: BackgroundTasks):
+    """Force a dialogue with a canned payload — useful for testing without the desktop capture loop."""
+    decision = await gemini.decide(
+        summary="User is sitting at their computer doing something",
+        vision_context="No screenshot available",
+        active_window="unknown",
+    )
+
+    if not decision.get("triggered"):
+        decision["triggered"] = True
+        decision.setdefault("expression", "smug")
+        decision.setdefault("text", "I see you.")
+
+    dialogue = DialoguePayload(
+        characterName=settings.character_name,
+        expression=decision.get("expression", "neutral"),
+        text=decision["text"],
+    )
+    background.add_task(_deliver, dialogue)
+    return AnalyzeResponse(triggered=True, dialogue=dialogue)
+
+
 async def _deliver(dialogue: DialoguePayload) -> None:
     try:
         audio_url = await asyncio.get_event_loop().run_in_executor(

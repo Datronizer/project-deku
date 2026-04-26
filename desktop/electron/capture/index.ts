@@ -52,6 +52,10 @@ export async function startCapture() {
   console.log('[deku] capture started')
 }
 
+export async function triggerCycle() {
+  return runCycle()
+}
+
 async function runCycle() {
   const log: EventLog = {
     keyCount,

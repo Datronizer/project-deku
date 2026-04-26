@@ -18,6 +18,7 @@ export function Portrait({ characterName, expression }: Props) {
         alt={`${characterName} ${expression}`}
         className="w-full h-full object-contain drop-shadow-2xl"
         draggable={false}
+        onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/characters/placeholder.jpg' }}
       />
     </div>
   )
