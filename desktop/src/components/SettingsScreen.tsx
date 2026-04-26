@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
-import type { AppSettings, DebugState } from '../hooks/useSettings'
+import { useState } from 'react'
+import type { AppSettings, DebugState } from '../types'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 
 interface Props {
   debugState: DebugState
@@ -13,11 +14,7 @@ export function SettingsScreen({ debugState, settings, onClose, onSave }: Props)
   const [debugOpen, setDebugOpen] = useState(false)
   const [saved, setSaved] = useState(false)
 
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [onClose])
+  useEscapeKey(onClose)
 
   function handleSave() {
     onSave({ summarizer })

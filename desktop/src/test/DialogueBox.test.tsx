@@ -44,18 +44,18 @@ describe('DialogueBox', () => {
     expect(onClose).toHaveBeenCalledOnce()
   })
 
-  it('auto-closes after 5 seconds', () => {
+  it('auto-closes after 8 seconds', () => {
     const onClose = vi.fn()
     render(<DialogueBox payload={base} onClose={onClose} />)
     expect(onClose).not.toHaveBeenCalled()
-    act(() => { vi.advanceTimersByTime(5000) })
+    act(() => { vi.advanceTimersByTime(8000) })
     expect(onClose).toHaveBeenCalledOnce()
   })
 
-  it('does not auto-close before 5 seconds', () => {
+  it('does not auto-close before 8 seconds', () => {
     const onClose = vi.fn()
     render(<DialogueBox payload={base} onClose={onClose} />)
-    act(() => { vi.advanceTimersByTime(4900) })
+    act(() => { vi.advanceTimersByTime(7900) })
     expect(onClose).not.toHaveBeenCalled()
   })
 

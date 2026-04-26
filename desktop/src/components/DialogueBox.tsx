@@ -3,6 +3,7 @@ import { Portrait } from './Portrait'
 import { TextBox } from './TextBox'
 import type { DialoguePayload } from '../types'
 import { useVoiceCapture } from '../hooks/useVoiceCapture'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 import { sendUserMessageToAgent } from '../services/conversation'
 
 const AUTO_CLOSE_MS = 8000
@@ -23,18 +24,16 @@ export function DialogueBox({ payload, onClose }: Props) {
   const [showVoicePrompt, setShowVoicePrompt] = useState(false)
   const { isListening, transcript, startListening, stopListening, resetTranscript } = useVoiceCapture()
 
-  // ESC dismisses — but only after typing finishes
+  // Play audio when dialogue arrives
   useEffect(() => {
-    if (!typingDone) return
-    const handler = (e: KeyboardEvent) => { 
-      if (e.key === 'Escape') {
-        stopListening()
-        onClose()
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [typingDone, onClose, stopListening])
+    if (!payload.audioUrl) return
+    const audio = new Audio(payload.audioUrl)
+    audio.play().catch(() => {})
+    return () => { audio.pause() }
+  }, [payload.audioUrl])
+
+  // ESC dismisses — but only after typing finishes
+  useEscapeKey(() => { stopListening(); onClose() }, typingDone)
 
   // Auto-close countdown after typing finishes
   useEffect(() => {

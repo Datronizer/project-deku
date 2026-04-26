@@ -1,6 +1,6 @@
 fastapi[standard]
 uvicorn
-google-genai
+google-cloud-aiplatform
 google-cloud-vision
 elevenlabs
 httpx
