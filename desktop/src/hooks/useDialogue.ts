@@ -7,7 +7,6 @@ export function useDialogue() {
 
   const handler = useCallback((data: DialoguePayload) => setPayload(data), [])
   useIpcListener('show-dialogue', handler)
-  useIpcListener('show-dialogue-from-conversation', handler)
 
   function dismiss() {
     setPayload(null)

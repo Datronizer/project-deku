@@ -3,6 +3,9 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import http from "node:http";
 import { createRequire } from "node:module";
+import { execSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
 const BACKEND_URL = process.env.VITE_BACKEND_URL ?? "http://localhost:8000";
 async function get(baseUrl, path2) {
   const res = await fetch(`${baseUrl}${path2}`);
@@ -188,6 +191,9 @@ async function runCycle(log, tier) {
   const activeWindow = log.windowTitles.at(-1) ?? "unknown";
   console.log(`[deku] tier${tier} — "${summary}"`);
   const screenshot = tier === 1 ? "" : await takeScreenshot();
+  if (tier !== 1 && !screenshot) {
+    console.warn(`[deku] tier${tier} — screenshot is empty, vision API will be skipped in backend`);
+  }
   try {
     await backend.analyze({ summary, active_window: activeWindow, screenshot_b64: screenshot, tier });
   } catch (err) {
@@ -199,7 +205,31 @@ async function takeScreenshot() {
     const screenshotDesktop = require$1("screenshot-desktop");
     const buf = await screenshotDesktop({ format: "jpg" });
     return buf.toString("base64");
-  } catch {
+  } catch (err) {
+    if (process.platform === "linux") {
+      console.log("[deku] screenshot-desktop failed, trying linux fallbacks...");
+      const tmpPath = path.join(os.tmpdir(), `deku-snap-${Date.now()}.jpg`);
+      try {
+        try {
+          execSync(`spectacle -b -n -o "${tmpPath}"`, { stdio: "ignore" });
+        } catch {
+          try {
+            execSync(`scrot -z "${tmpPath}"`, { stdio: "ignore" });
+          } catch {
+            execSync(`gnome-screenshot -f "${tmpPath}"`, { stdio: "ignore" });
+          }
+        }
+        if (fs.existsSync(tmpPath)) {
+          const buf = fs.readFileSync(tmpPath);
+          fs.unlinkSync(tmpPath);
+          return buf.toString("base64");
+        }
+      } catch (fallbackErr) {
+        console.error("[deku] all Linux screenshot methods failed:", fallbackErr);
+      }
+    } else {
+      console.error("[deku] screenshot-desktop failed:", err);
+    }
     return "";
   }
 }

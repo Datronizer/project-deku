@@ -7,17 +7,10 @@ export async function sendUserMessageToAgent(userText: string): Promise<void> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: userText }),
     })
-
     if (!response.ok) {
       console.error('[conversation] user-message failed:', response.statusText)
-      return
     }
-
-    const data = await response.json()
-
-    if (data.triggered && data.dialogue) {
-      window.ipcRenderer.send('show-dialogue-from-conversation', data.dialogue)
-    }
+    // Response dialogue is delivered via backend HTTP push to port 7777 → show-dialogue
   } catch (err) {
     console.error('[conversation] error:', err)
   }

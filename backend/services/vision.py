@@ -1,11 +1,23 @@
 import asyncio
 import logging
 import re
+import base64
 from google.cloud import vision
+from config import settings
 
 logger = logging.getLogger(__name__)
 
-_client = vision.ImageAnnotatorClient()
+try:
+    # Use explicit project from settings if available, else fallback to default ADC
+    if settings.google_cloud_project:
+        _client = vision.ImageAnnotatorClient(client_options={"quota_project_id": settings.google_cloud_project})
+        logger.info("[vision] client initialized with project: %s", settings.google_cloud_project)
+    else:
+        _client = vision.ImageAnnotatorClient()
+        logger.info("[vision] client initialized with default credentials")
+except Exception as e:
+    logger.error("[vision] failed to initialize Cloud Vision client: %s", e)
+    _client = None
 
 _REDACT_PATTERNS = [
     re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b'),  # email
@@ -19,21 +31,44 @@ def _redact_sensitive(text: str) -> str:
     return text
 
 async def describe_screenshot(screenshot_b64: str) -> str:
-    img_kb = len(screenshot_b64) * 3 // 4 // 1024
+    if not _client:
+        return "Vision API client not initialized."
+    
+    if not screenshot_b64:
+        return "No screenshot provided."
+
+    # Handle data URI prefix if present
+    if "," in screenshot_b64:
+        screenshot_b64 = screenshot_b64.split(",")[1]
+
+    try:
+        content = base64.b64decode(screenshot_b64)
+    except Exception as e:
+        logger.error("[vision] failed to decode base64: %s", e)
+        return f"Error decoding screenshot: {e}"
+
+    img_kb = len(content) // 1024
     logger.info("[vision] sending screenshot to Cloud Vision (%d KB)", img_kb)
 
-    image = vision.Image(content=screenshot_b64.encode() if isinstance(screenshot_b64, str) else screenshot_b64)
+    image = vision.Image(content=content)
 
     loop = asyncio.get_event_loop()
     try:
-        text_resp, label_resp, web_resp = await asyncio.gather(
-            loop.run_in_executor(None, _client.text_detection, image),
-            loop.run_in_executor(None, _client.label_detection, image),
-            loop.run_in_executor(None, _client.web_detection, image),
+        # We use a timeout to prevent hanging forever
+        text_resp, label_resp, web_resp = await asyncio.wait_for(
+            asyncio.gather(
+                loop.run_in_executor(None, _client.text_detection, image),
+                loop.run_in_executor(None, _client.label_detection, image),
+                loop.run_in_executor(None, _client.web_detection, image),
+            ),
+            timeout=10.0
         )
-    except Exception:
-        logger.exception("[vision] Cloud Vision API call failed")
-        raise
+    except asyncio.TimeoutError:
+        logger.error("[vision] Cloud Vision API call timed out")
+        return "Vision API timed out."
+    except Exception as e:
+        logger.error("[vision] Cloud Vision API call failed: %s", e)
+        return f"Vision API error: {e}"
 
     parts: list[str] = []
 

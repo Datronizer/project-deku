@@ -30,7 +30,7 @@ async def send_user_message(user_input: str) -> dict:
     append agent turn, return {"text": str, "conversation_id": None}.
     """
     _history.append(
-        ConversationHistoryTranscriptCommonModelInput(role="user", message=user_input)
+        ConversationHistoryTranscriptCommonModelInput(role="user", message=user_input, time_in_call_secs=0)
     )
     logger.info(
         "[elevenlabs_conversation] user turn — history_len=%d input=%.80s",
@@ -41,7 +41,7 @@ async def send_user_message(user_input: str) -> dict:
         agent_id=settings.elevenlabs_agent_id,
         simulation_specification=ConversationSimulationSpecification(
             simulated_user_config=AgentConfig(first_message=user_input),
-            partial_conversation_history=_history[:-1] if len(_history) > 1 else None,
+            **({"partial_conversation_history": _history[:-1]} if len(_history) > 1 else {}),
         ),
         new_turns_limit=1,
     )
@@ -54,7 +54,7 @@ async def send_user_message(user_input: str) -> dict:
 
     if agent_text:
         _history.append(
-            ConversationHistoryTranscriptCommonModelInput(role="agent", message=agent_text)
+            ConversationHistoryTranscriptCommonModelInput(role="agent", message=agent_text, time_in_call_secs=0)
         )
 
     logger.info("[elevenlabs_conversation] agent turn — text=%.80s", agent_text)

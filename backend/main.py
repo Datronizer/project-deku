@@ -1,7 +1,7 @@
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import analyze, agent, auth
+from routers import analyze, auth
 
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s:     %(name)s — %(message)s")
@@ -16,7 +16,6 @@ app.add_middleware(
 )
 
 app.include_router(analyze.router)
-app.include_router(agent.router)
 app.include_router(auth.router)
 
 

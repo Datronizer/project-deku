@@ -33,7 +33,7 @@ The desktop app is a thin client. It captures screenshots and sends them to the 
 
 **Event pipeline (tiered to minimize API costs):**
 1. `uiohook-napi` + `active-win` continuously capture raw local events (keystrokes, mouse, active window title) — free, no API calls
-2. Every ~30s, a local Gemma 4 model batches events into a one-sentence activity summary (e.g. "User has been typing in VS Code for 2 minutes")
+2. Every 5–10min, a `SimpleSummarizer` batches events into a one-sentence activity summary (Gemma/Ollama removed — too resource-intensive for demo)
 3. Summary + heuristics decide whether to trigger the mischief agent (e.g. deep focus → disrupt, idle → taunt on return, rapid app-switching → pile on)
 4. Only on trigger: screenshot → Vision API → Gemini orchestrator → dialogue
 
@@ -41,13 +41,13 @@ The desktop app is a thin client. It captures screenshots and sends them to the 
 - Transparent, frameless, always-on-top Electron window covering the full screen
 - Character portrait (still image, swappable per expression: neutral, mad, smug, etc.)
 - Dialogue box with typewriter text, synced to ElevenLabs audio
-- While dialogue is active: `setIgnoreMouseEvents(false)` captures mouse events; if cursor approaches the close area, `@nut-tree/nut-js` shoves it away, portrait swaps to mad, agent scolds the user before resuming
+- While dialogue is active: `setIgnoreMouseEvents(false)` captures mouse events; the [dismiss] button dodges the cursor using CSS `position:fixed` + React state transitions (native cursor shove via `@nut-tree/nut-js` or `robotjs` abandoned — not on npm / broken on Node 22 + Python 3.13)
 
 **Screen awareness:** Desktop takes a screenshot → sends to backend → Vision API interprets it → orchestrator reacts to what the user is actually doing.
 
 **Auth0 integration:** Auth0 AI Agents lets the orchestrator log into the user's accounts without exposing credentials — enables web-based mischief.
 
-**I/O control (Electron/desktop):** `@nut-tree/nut-js` for mouse/keyboard, `screenshot-desktop` for screen capture, `uiohook-napi` for global input events, `active-win` for active window info, Electron's built-in `Tray` API for system tray.
+**I/O control (Electron/desktop):** `screenshot-desktop` for screen capture, `uiohook-napi` for global input events, `active-win` for active window info, Electron's built-in `Tray` API for system tray. (`@nut-tree/nut-js` and `robotjs` are not used — see overlay UI note above.)
 
 **Cross-platform:** Mac, Windows, Linux.
 
@@ -60,8 +60,13 @@ GEMINI_API_KEY=
 ELEVENLABS_API_KEY=
 ELEVENLABS_AGENT_ID=
 AUTH0_DOMAIN=
-AUTH0_CLIENT_ID=
+AUTH0_CLIENT_ID=          # Regular Web App — used for authorization_code flow
 AUTH0_CLIENT_SECRET=
+AUTH0_CALLBACK_URL=http://localhost:8000/auth/callback
+AUTH0_MGMT_CLIENT_ID=     # Separate M2M App — used ONLY for Management API client_credentials
+AUTH0_MGMT_CLIENT_SECRET=
+TWITTER_CONSUMER_KEY=     # From your own Twitter Developer App
+TWITTER_CONSUMER_SECRET=
 ```
 
 Google Cloud Vision uses Application Default Credentials (ADC) — no API key needed. For local dev run `gcloud auth application-default login`. For production (Vultr), set `GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json`.
@@ -108,17 +113,25 @@ uvicorn main:app --reload
 
 **Audio delivery:** ElevenLabs TTS returns a `data:audio/mpeg;base64,...` URI in `DialoguePayload.audioUrl` — no file serving needed, plays directly in renderer.
 
-**Character assets:** `desktop/public/characters/<characterName>/<expression>.png` — expressions: `neutral`, `mad`, `smug`, `surprised`. Currently have `klee/smug.png`.
+**Character assets:** `desktop/public/characters/<characterName>/<expression>.png` — expressions: `neutral`, `mad`, `smug`, `surprised`. Currently have `bakugou/{neutral,mad,smug,surprised}.png`.
 
 **Tailwind:** v4 via `@tailwindcss/vite` plugin (already installed in `desktop/`).
 
 **ElevenLabs server-side agent call:** Use `AsyncElevenLabs.conversational_ai.agents.simulate_conversation(agent_id, simulation_specification=ConversationSimulationSpecification(simulated_user_config=AgentConfig(first_message=prompt)), new_turns_limit=1)` — find the `role='agent'` turn in `result.simulated_conversation` for the response text.
 
+**ElevenLabs history / repetition:** Pass `partial_conversation_history` to `simulate_conversation` so the agent doesn't repeat itself. Use a `deque(maxlen=10)` for rolling history. The field must be omitted (not `None`) when empty: `**({"partial_conversation_history": prior_turns} if prior_turns else {})`. Every `ConversationHistoryTranscriptCommonModelInput` requires `time_in_call_secs=0`.
+
+**Auth0 dual-app pattern:** Use a Regular Web App (`AUTH0_CLIENT_ID/SECRET`) for the `authorization_code` flow; use a separate M2M App (`AUTH0_MGMT_CLIENT_ID/SECRET`) with `read:user_idp_tokens` scope for the Management API `client_credentials` call. Never mix the two — M2M credentials reject `authorization_code` and vice versa.
+
+**Web Speech API in Electron:** Unreliable in transparent/non-focusable windows. Use a text `<input>` instead for user replies.
+
+**Dialogue reply flow:** User types in `DialogueBox.tsx` → `sendUserMessageToAgent(text)` POSTs to `/analyze/user-message` → backend calls `elevenlabs_agent.reply()` → pushes new `DialoguePayload` via HTTP to port 7777. Do NOT use `ipcRenderer.send` for this — there is no IPC handler on the main side for conversation replies.
+
 **ElevenLabs `useConversationStatus` + `useEffect` guard:** Status starts `"disconnected"` → `"connecting"` → `"connected"` (`"disconnecting"` is filtered by the SDK). Never use `finally` to reset a connection mutex — the SDK fires `onStatusChange("connecting")` synchronously, queuing an effect re-run before `finally` executes, causing rapid-fire fetches. Reset the mutex only on explicit failure; reset it again when `status === 'connected'` to allow future reconnects.
 
 **Backend integration tests:** `cd backend && pytest tests/test_connections.py -v` — skip Gemma (requires Ollama): add `-k "not gemma"`.
 
-**Backend modules:** `config.py` (pydantic-settings), `models.py` (shared Pydantic types), `services/vision.py`, `services/elevenlabs_agent.py`, `services/elevenlabs_tts.py`, `services/gemini.py` (Gemma fallback only), `services/desktop.py`, `routers/analyze.py`, `routers/agent.py`, `main.py`.
+**Backend modules:** `config.py` (pydantic-settings), `models.py` (shared Pydantic types), `services/vision.py`, `services/elevenlabs_agent.py`, `services/elevenlabs_tts.py`, `services/elevenlabs_conversation.py` (stateful multi-turn user replies), `services/auth0_client.py`, `services/twitter_poster.py`, `services/desktop.py`, `routers/analyze.py`, `routers/auth.py`, `main.py`. (`gemini.py` and `routers/agent.py` deleted.)
 
 ## Git Conventions
 
