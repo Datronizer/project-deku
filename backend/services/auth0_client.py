@@ -1,10 +1,11 @@
+import base64
+import json
 import logging
 import httpx
 from config import settings
 
 logger = logging.getLogger(__name__)
 
-# In-memory token store — persists for the life of the server process
 _twitter_access_token: str | None = None
 _twitter_access_token_secret: str | None = None
 
@@ -49,17 +50,16 @@ async def handle_callback(code: str) -> bool:
         )
         resp.raise_for_status()
         tokens = resp.json()
-        id_token_payload = _decode_id_token(tokens["id_token"])
-        user_id = id_token_payload["sub"]
+        user_id = _decode_jwt(tokens["id_token"])["sub"]
         logger.info("[auth0] authenticated user: %s", user_id)
 
-        # Get Management API token
+        # Get Management API token via M2M app client credentials
         resp = await client.post(
             f"https://{settings.auth0_domain}/oauth/token",
             json={
                 "grant_type": "client_credentials",
-                "client_id": settings.auth0_client_id,
-                "client_secret": settings.auth0_client_secret,
+                "client_id": settings.auth0_mgmt_client_id,
+                "client_secret": settings.auth0_mgmt_client_secret,
                 "audience": f"https://{settings.auth0_domain}/api/v2/",
             },
             timeout=10,
@@ -67,7 +67,7 @@ async def handle_callback(code: str) -> bool:
         resp.raise_for_status()
         mgmt_token = resp.json()["access_token"]
 
-        # Get user profile — identities contain the Twitter OAuth token pair
+        # Fetch user profile — identities contain the Twitter OAuth token pair
         resp = await client.get(
             f"https://{settings.auth0_domain}/api/v2/users/{user_id}",
             headers={"Authorization": f"Bearer {mgmt_token}"},
@@ -88,10 +88,8 @@ async def handle_callback(code: str) -> bool:
     return False
 
 
-def _decode_id_token(id_token: str) -> dict:
-    """Decode JWT payload without verification (demo only — we trust Auth0)."""
-    import base64, json
-    payload_b64 = id_token.split(".")[1]
-    # Add padding
+def _decode_jwt(token: str) -> dict:
+    """Decode JWT payload without signature verification (demo only)."""
+    payload_b64 = token.split(".")[1]
     payload_b64 += "=" * (4 - len(payload_b64) % 4)
     return json.loads(base64.urlsafe_b64decode(payload_b64))

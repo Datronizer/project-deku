@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     auth0_client_id: str = ""
     auth0_client_secret: str = ""
     auth0_callback_url: str = "http://localhost:8000/auth/callback"
+    auth0_mgmt_client_id: str = ""
+    auth0_mgmt_client_secret: str = ""
 
     # Twitter app credentials (same keys configured in Auth0 Twitter social connection)
     twitter_consumer_key: str = ""
