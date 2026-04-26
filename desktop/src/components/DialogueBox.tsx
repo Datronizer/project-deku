@@ -17,6 +17,7 @@ interface Props {
 export function DialogueBox({ payload, onClose }: Props) {
   const [typingDone, setTypingDone] = useState(false)
   const [progress, setProgress] = useState(100)
+  const [expression, setExpression] = useState(payload.expression)
 
   // ESC dismisses — but only after typing finishes
   useEffect(() => {
@@ -49,13 +50,15 @@ export function DialogueBox({ payload, onClose }: Props) {
       className="fixed left-1/2 -translate-x-1/2 w-[85vw] flex items-end gap-4 pointer-events-auto select-none"
       style={{ bottom: bottomPx }}
     >
-      <Portrait characterName={payload.characterName} expression={payload.expression} />
+      <Portrait characterName={payload.characterName} expression={expression} />
       <TextBox
         characterName={payload.characterName}
         text={payload.text}
         onClose={onClose}
         onTypingDone={() => setTypingDone(true)}
         autoCloseProgress={typingDone ? progress : null}
+        onCloseHover={() => setExpression('mad')}
+        onCloseHoverEnd={() => setExpression(payload.expression)}
       />
     </div>
   )

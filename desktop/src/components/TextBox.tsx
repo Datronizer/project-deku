@@ -7,9 +7,11 @@ interface Props {
   onClose: () => void
   onTypingDone?: () => void
   autoCloseProgress?: number | null
+  onCloseHover?: () => void
+  onCloseHoverEnd?: () => void
 }
 
-export function TextBox({ characterName, text, onClose, onTypingDone, autoCloseProgress = null }: Props) {
+export function TextBox({ characterName, text, onClose, onTypingDone, autoCloseProgress = null, onCloseHover, onCloseHoverEnd }: Props) {
   const { displayed, done } = useTypewriter(text)
 
   useEffect(() => {
@@ -26,6 +28,8 @@ export function TextBox({ characterName, text, onClose, onTypingDone, autoCloseP
             <span className="text-xs text-white/30">esc to dismiss</span>
             <button
               onClick={onClose}
+              onMouseEnter={onCloseHover}
+              onMouseLeave={onCloseHoverEnd}
               className="text-xs text-white/50 hover:text-white/90 transition-colors cursor-pointer"
             >
               [close]
