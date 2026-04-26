@@ -1,10 +1,22 @@
 import asyncio
 import logging
+import re
 from google.cloud import vision
 
 logger = logging.getLogger(__name__)
 
 _client = vision.ImageAnnotatorClient()
+
+_REDACT_PATTERNS = [
+    re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b'),  # email
+    re.compile(r'\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b'),                    # phone
+    re.compile(r'\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b'),              # card number
+]
+
+def _redact_sensitive(text: str) -> str:
+    for pattern in _REDACT_PATTERNS:
+        text = pattern.sub('[REDACTED]', text)
+    return text
 
 async def describe_screenshot(screenshot_b64: str) -> str:
     img_kb = len(screenshot_b64) * 3 // 4 // 1024
@@ -25,7 +37,7 @@ async def describe_screenshot(screenshot_b64: str) -> str:
 
     parts: list[str] = []
 
-    raw_text = text_resp.full_text_annotation.text.strip()
+    raw_text = _redact_sensitive(text_resp.full_text_annotation.text.strip())
     if raw_text:
         parts.append(f"Visible text: {raw_text[:400]}")
         logger.debug("[vision] text detection: %d chars", len(raw_text))

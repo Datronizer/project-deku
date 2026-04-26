@@ -11,23 +11,33 @@ router = APIRouter(prefix="/analyze", tags=["analyze"])
 @router.post("", response_model=AnalyzeResponse)
 async def analyze(payload: ActivityPayload, background: BackgroundTasks):
     logger.info(
-        "[analyze] cycle — window=%r summary=%.100s screenshot=%dKB",
+        "[analyze] tier%d — window=%r summary=%.100s screenshot=%dKB",
+        payload.tier,
         payload.active_window,
         payload.summary,
         len(payload.screenshot_b64) * 3 // 4 // 1024,
     )
 
-    try:
-        vision_context = await vision.describe_screenshot(payload.screenshot_b64)
-    except Exception as e:
-        logger.error("[analyze] vision failed, continuing without it: %s", e)
-        vision_context = f"Vision API unavailable: {e}"
+    # Tier 1 sends no screenshot — skip Vision API entirely
+    if payload.screenshot_b64:
+        try:
+            vision_context = await vision.describe_screenshot(payload.screenshot_b64)
+        except Exception as e:
+            logger.error("[analyze] vision failed, continuing without it: %s", e)
+            vision_context = f"Vision API unavailable: {e}"
+    else:
+        vision_context = "No screenshot provided."
 
     try:
-        decision = await gemini.decide(payload.summary, vision_context, payload.active_window)
+        decision = await gemini.decide(payload.summary, vision_context, payload.active_window, tier=payload.tier)
     except Exception as e:
         logger.error("[analyze] gemini failed: %s", e)
         return AnalyzeResponse(triggered=False)
+
+    # Tier 1 and Tier 3 always fire — override in case Gemini ignores the prompt
+    if payload.tier in (1, 3):
+        decision["triggered"] = True
+        decision.setdefault("expression", "smug")
 
     if not decision.get("triggered"):
         logger.info("[analyze] not triggered this cycle")
@@ -51,6 +61,7 @@ async def trigger(background: BackgroundTasks):
         summary="User is sitting at their computer doing something",
         vision_context="No screenshot available",
         active_window="unknown",
+        tier=2,
     )
 
     if not decision.get("triggered"):
