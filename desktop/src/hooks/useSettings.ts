@@ -1,10 +1,9 @@
 import { useState, useCallback } from 'react'
-import type { AppSettings, DebugState } from '../types'
+import type { DebugState } from '../types'
 import { useIpcListener } from './useIpcListener'
 
 interface SettingsPayload {
   debugState: DebugState
-  settings: AppSettings
 }
 
 export function useSettings() {
@@ -18,10 +17,5 @@ export function useSettings() {
     window.ipcRenderer.send('dismiss-settings')
   }
 
-  function save(settings: AppSettings) {
-    window.ipcRenderer.send('save-settings', settings)
-    if (payload) setPayload({ ...payload, settings })
-  }
-
-  return { payload, dismiss, save }
+  return { payload, dismiss }
 }

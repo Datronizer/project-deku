@@ -2,11 +2,9 @@ import { app } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
 
-export interface AppSettings {
-  summarizer: 'gemma' | 'simple'
-}
+export interface AppSettings {}
 
-const DEFAULTS: AppSettings = { summarizer: 'gemma' }
+const DEFAULTS: AppSettings = {}
 
 function settingsPath() {
   return path.join(app.getPath('userData'), 'deku-settings.json')

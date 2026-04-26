@@ -1,12 +1,9 @@
 import { app, BrowserWindow, ipcMain, globalShortcut, Tray, Menu, nativeImage, screen } from 'electron'
-import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import http from 'node:http'
-import { startCapture, triggerCycle, getDebugState, captureScreenshot, reloadSummarizer } from './capture/index.js'
-import { loadSettings, saveSettings } from './settings.js'
+import { startCapture, triggerCycle, getDebugState } from './capture/index.js'
 
-const require = createRequire(import.meta.url)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 process.env.APP_ROOT = path.join(__dirname, '..')
@@ -85,12 +82,7 @@ ipcMain.on('dismiss-settings', () => {
   win?.setIgnoreMouseEvents(true, { forward: true })
 })
 
-// Settings IPC
-ipcMain.handle('get-settings', () => loadSettings())
-ipcMain.on('save-settings', (_event, incoming) => {
-  saveSettings(incoming)
-  reloadSummarizer()
-})
+
 
 // Small HTTP server so the backend can push dialogue events
 function startDialogueServer() {
@@ -159,7 +151,6 @@ app.whenReady().then(() => {
       win.setIgnoreMouseEvents(false)
       win.webContents.send('show-settings', {
         debugState: getDebugState(),
-        settings: loadSettings(),
       })
     }
   })

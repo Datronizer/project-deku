@@ -1,28 +1,20 @@
 import { createRequire } from 'node:module'
 import { backend } from '../server.js'
-import { GemmaSummarizer, SimpleSummarizer, type EventLog, type Summarizer } from './summarizer.js'
+import { SimpleSummarizer, type EventLog } from './summarizer.js'
 import { URGENT_PATTERNS } from './patterns.js'
-import { loadSettings } from '../settings.js'
 
 const require = createRequire(import.meta.url)
 
-function makeSummarizer(): Summarizer {
-  return loadSettings().summarizer === 'simple' ? new SimpleSummarizer() : new GemmaSummarizer()
-}
+const summarizer = new SimpleSummarizer()
 
-let summarizer: Summarizer = makeSummarizer()
-
-export function reloadSummarizer() {
-  summarizer = makeSummarizer()
-  console.log(`[deku] summarizer reloaded: ${loadSettings().summarizer}`)
-}
+export function reloadSummarizer() {}
 
 // ── Tier intervals & cooldowns ─────────────────────────────────────────────
 const T1_MIN_MS  = 25 * 60_000      // Tier 1: random 25–45 min surprise
 const T1_MAX_MS  = 45 * 60_000
 const T1_COOLDOWN_MS = 20 * 60_000  // prevent accidental double-fire
-const T2_MIN_MS = 5_000             // Tier 2: every 5-10 seconds for constant feedback
-const T2_MAX_MS = 10_000
+const T2_MIN_MS = 5 * 60_000        // Tier 2: every 5-10 minutes
+const T2_MAX_MS = 10 * 60_000
 const T3_COOLDOWN_MS =  3 * 60_000  // Tier 3: per-category cooldown
 const MAX_WINDOW_HISTORY = 8
 

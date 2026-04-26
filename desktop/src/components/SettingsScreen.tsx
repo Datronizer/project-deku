@@ -1,28 +1,16 @@
 import { useState } from 'react'
-import type { AppSettings, DebugState } from '../types'
+import type { DebugState } from '../types'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 
 interface Props {
   debugState: DebugState
-  settings: AppSettings
   onClose: () => void
-  onSave: (s: AppSettings) => void
 }
 
-export function SettingsScreen({ debugState, settings, onClose, onSave }: Props) {
-  const [summarizer, setSummarizer] = useState(settings.summarizer)
+export function SettingsScreen({ debugState, onClose }: Props) {
   const [debugOpen, setDebugOpen] = useState(false)
-  const [saved, setSaved] = useState(false)
 
   useEscapeKey(onClose)
-
-  function handleSave() {
-    onSave({ summarizer })
-    setSaved(true)
-    setTimeout(() => setSaved(false), 1500)
-  }
-
-  const dirty = summarizer !== settings.summarizer
 
   return (
     <div
@@ -45,64 +33,6 @@ export function SettingsScreen({ debugState, settings, onClose, onSave }: Props)
         </div>
 
         <div className="px-6 py-4 space-y-6">
-          {/* Summarizer setting */}
-          <div>
-            <div className="text-green-600 text-xs uppercase tracking-widest mb-3">activity summarizer</div>
-            <div className="space-y-2">
-              <label className="flex items-start gap-3 cursor-pointer group">
-                <input
-                  type="radio"
-                  name="summarizer"
-                  value="gemma"
-                  checked={summarizer === 'gemma'}
-                  onChange={() => setSummarizer('gemma')}
-                  className="mt-0.5 accent-green-400"
-                />
-                <div>
-                  <div className="text-green-200 group-hover:text-green-100 transition-colors">
-                    Gemma via Ollama
-                  </div>
-                  <div className="text-green-700 text-xs mt-0.5">
-                    better summaries — requires Ollama running locally
-                  </div>
-                </div>
-              </label>
-              <label className="flex items-start gap-3 cursor-pointer group">
-                <input
-                  type="radio"
-                  name="summarizer"
-                  value="simple"
-                  checked={summarizer === 'simple'}
-                  onChange={() => setSummarizer('simple')}
-                  className="mt-0.5 accent-green-400"
-                />
-                <div>
-                  <div className="text-green-200 group-hover:text-green-100 transition-colors">
-                    Simple (no dependencies)
-                  </div>
-                  <div className="text-green-700 text-xs mt-0.5">
-                    always works — uses keystroke counts and window title directly
-                  </div>
-                </div>
-              </label>
-            </div>
-          </div>
-
-          {/* Save button */}
-          <button
-            onClick={handleSave}
-            disabled={!dirty && !saved}
-            className={`px-4 py-1.5 rounded border text-xs font-bold transition-all ${
-              saved
-                ? 'border-green-500 text-green-400 bg-green-900/30'
-                : dirty
-                ? 'border-green-500 text-green-300 hover:bg-green-900/30 cursor-pointer'
-                : 'border-green-900 text-green-800 cursor-default'
-            }`}
-          >
-            {saved ? '✓ saved' : 'save'}
-          </button>
-
           {/* Debug section (collapsible) */}
           <div className="border-t border-green-900 pt-4">
             <button

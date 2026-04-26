@@ -1,14 +1,9 @@
-var __defProp = Object.defineProperty;
-var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
-var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
-import { app, ipcMain, BrowserWindow, globalShortcut, screen, nativeImage, Tray, Menu } from "electron";
-import { createRequire } from "node:module";
+import { ipcMain, app, BrowserWindow, globalShortcut, screen, nativeImage, Tray, Menu } from "electron";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import http from "node:http";
-import fs from "node:fs";
+import { createRequire } from "node:module";
 const BACKEND_URL = process.env.VITE_BACKEND_URL ?? "http://localhost:8000";
-const OLLAMA_URL = "http://localhost:11434";
 async function get(baseUrl, path2) {
   const res = await fetch(`${baseUrl}${path2}`);
   if (!res.ok) throw new Error(`GET ${path2} → ${res.status}`);
@@ -28,14 +23,6 @@ const backend = {
   health: () => get(BACKEND_URL, "/health"),
   analyze: (payload) => post(BACKEND_URL, "/analyze", payload)
 };
-const ollama = {
-  generate: (req) => post(OLLAMA_URL, "/api/generate", { ...req, stream: false }, 8e3).then((data) => data.response.trim())
-};
-const server = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
-  __proto__: null,
-  backend,
-  ollama
-}, Symbol.toStringTag, { value: "Module" }));
 class SimpleSummarizer {
   async summarize(log) {
     const parts = [];
@@ -47,37 +34,6 @@ class SimpleSummarizer {
     }
     const activity = parts.length > 0 ? parts.join(", ") : "was idle";
     return `User ${activity} in ${window} over the last ${log.durationSeconds}s`;
-  }
-}
-const GEMMA_MODEL = "gemma4:2b";
-class GemmaSummarizer {
-  constructor() {
-    __publicField(this, "available", null);
-  }
-  async summarize(log) {
-    if (this.available === false) return new SimpleSummarizer().summarize(log);
-    const prompt = [
-      "Summarize the following desktop activity in one short, natural sentence (max 20 words).",
-      "Be specific about what the user is doing. Output only the sentence, nothing else.",
-      "",
-      `Window: ${log.windowTitles.at(-1) ?? "unknown"}`,
-      `All windows seen: ${log.windowTitles.join(" → ")}`,
-      `Keystrokes: ${log.keyCount}`,
-      `Mouse clicks: ${log.mouseClicks}`,
-      `Duration: ${log.durationSeconds}s`
-    ].join("\n");
-    try {
-      const { ollama: ollama2 } = await Promise.resolve().then(() => server);
-      const text = await ollama2.generate({ model: GEMMA_MODEL, prompt });
-      this.available = true;
-      return text;
-    } catch (err) {
-      if (this.available === null) {
-        console.warn("[deku] ollama/Gemma unavailable, falling back to simple summarizer:", err);
-        this.available = false;
-      }
-      return new SimpleSummarizer().summarize(log);
-    }
   }
 }
 const URGENT_PATTERNS = [
@@ -104,30 +60,8 @@ const URGENT_PATTERNS = [
   { pattern: /\bvalorant\b/i, category: "gaming" },
   { pattern: /\broblox\b/i, category: "gaming" }
 ];
-const DEFAULTS = { summarizer: "gemma" };
-function settingsPath() {
-  return path.join(app.getPath("userData"), "deku-settings.json");
-}
-function loadSettings() {
-  try {
-    const raw = fs.readFileSync(settingsPath(), "utf8");
-    return { ...DEFAULTS, ...JSON.parse(raw) };
-  } catch {
-    return { ...DEFAULTS };
-  }
-}
-function saveSettings(s) {
-  fs.writeFileSync(settingsPath(), JSON.stringify(s, null, 2));
-}
 const require$1 = createRequire(import.meta.url);
-function makeSummarizer() {
-  return loadSettings().summarizer === "simple" ? new SimpleSummarizer() : new GemmaSummarizer();
-}
-let summarizer = makeSummarizer();
-function reloadSummarizer() {
-  summarizer = makeSummarizer();
-  console.log(`[deku] summarizer reloaded: ${loadSettings().summarizer}`);
-}
+const summarizer = new SimpleSummarizer();
 const T1_MIN_MS = 25 * 6e4;
 const T1_MAX_MS = 45 * 6e4;
 const T1_COOLDOWN_MS = 20 * 6e4;
@@ -269,7 +203,6 @@ async function takeScreenshot() {
     return "";
   }
 }
-createRequire(import.meta.url);
 const __dirname$1 = path.dirname(fileURLToPath(import.meta.url));
 process.env.APP_ROOT = path.join(__dirname$1, "..");
 const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
@@ -334,13 +267,8 @@ ipcMain.on("dismiss-dialogue", () => {
 ipcMain.on("dismiss-settings", () => {
   win == null ? void 0 : win.setIgnoreMouseEvents(true, { forward: true });
 });
-ipcMain.handle("get-settings", () => loadSettings());
-ipcMain.on("save-settings", (_event, incoming) => {
-  saveSettings(incoming);
-  reloadSummarizer();
-});
 function startDialogueServer() {
-  const server2 = http.createServer((req, res) => {
+  const server = http.createServer((req, res) => {
     if (req.method !== "POST" || req.url !== "/dialogue") {
       res.writeHead(404).end();
       return;
@@ -362,7 +290,7 @@ function startDialogueServer() {
       }
     });
   });
-  server2.listen(DIALOGUE_PORT, "127.0.0.1", () => {
+  server.listen(DIALOGUE_PORT, "127.0.0.1", () => {
     console.log(`[deku] dialogue server listening on 127.0.0.1:${DIALOGUE_PORT}`);
   });
 }
@@ -395,8 +323,7 @@ app.whenReady().then(() => {
     if (win) {
       win.setIgnoreMouseEvents(false);
       win.webContents.send("show-settings", {
-        debugState: getDebugState(),
-        settings: loadSettings()
+        debugState: getDebugState()
       });
     }
   });

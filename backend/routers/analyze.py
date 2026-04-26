@@ -3,7 +3,7 @@ import asyncio
 from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
 from models import ActivityPayload, AnalyzeResponse, DialoguePayload
-from services import vision, elevenlabs_agent, elevenlabs_tts, desktop, elevenlabs_conversation
+from services import vision, elevenlabs_agent, elevenlabs_tts, desktop, elevenlabs_conversation, twitter_poster
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -11,51 +11,27 @@ router = APIRouter(prefix="/analyze", tags=["analyze"])
 
 
 class UserMessagePayload(BaseModel):
-    """User input to send to the agent."""
     text: str
-
-
-@router.post("/init-conversation")
-async def init_conversation():
-    """Initialize a new conversation session with the agent."""
-    try:
-        conversation_id = await elevenlabs_conversation.initialize_conversation()
-        return {"status": "ok", "conversation_id": conversation_id}
-    except Exception as e:
-        logger.error("[init_conversation] failed: %s", e)
-        return {"status": "error", "message": str(e)}
 
 
 @router.post("/user-message", response_model=AnalyzeResponse)
 async def user_message(payload: UserMessagePayload, background: BackgroundTasks):
-    """
-    User sends a message to the agent.
-    Agent responds with dialogue and audio.
-    """
+    """User sends a voice reply to Deku; Gemini responds in character."""
     logger.info("[user_message] user said: %.100s", payload.text)
-    
     try:
-        # Send user message to agent and get response
-        agent_response = await elevenlabs_conversation.send_user_message(payload.text)
+        decision = await elevenlabs_agent.reply(payload.text)
     except Exception as e:
-        logger.error("[user_message] failed: %s", e)
+        logger.error("[user_message] elevenlabs_agent.reply failed: %s", e)
         return AnalyzeResponse(triggered=False)
-    
-    # Build audio URL from agent's audio response if available
-    audio_url = None
-    if agent_response.get("audio_base64"):
-        audio_url = f"data:audio/mpeg;base64,{agent_response['audio_base64']}"
-    
+
     dialogue = DialoguePayload(
         characterName=settings.character_name,
-        expression="neutral",  # Let frontend vary expressions
-        text=agent_response.get("text", ""),
-        audioUrl=audio_url,
+        expression=decision.get("expression", "neutral"),
+        text=decision.get("text", ""),
     )
-    logger.info("[user_message] agent response: %r", dialogue.text)
-
     background.add_task(_deliver, dialogue)
     return AnalyzeResponse(triggered=True, dialogue=dialogue)
+
 
 @router.post("", response_model=AnalyzeResponse)
 async def analyze(payload: ActivityPayload, background: BackgroundTasks):
@@ -76,116 +52,113 @@ async def analyze(payload: ActivityPayload, background: BackgroundTasks):
         vision_context = f"Vision API unavailable: {e}"
 
     try:
-        decision = await elevenlabs_agent.decide(payload.summary, vision_context, payload.active_window)
+        decision = await elevenlabs_agent.decide(
+            payload.summary, vision_context, payload.active_window, tier=payload.tier
+        )
     except Exception as e:
-        logger.error("[analyze] elevenlabs_agent failed: %s", e)
+        logger.error("[analyze] elevenlabs_agent.decide failed: %s", e)
         return AnalyzeResponse(triggered=False)
+
+    # Force triggered for Tier 1 and Tier 3 (safety net)
+    if payload.tier in (1, 3):
+        decision["triggered"] = True
 
     if not decision.get("triggered"):
         logger.info("[analyze] not triggered this cycle")
         return AnalyzeResponse(triggered=False)
 
-    # Build audio URL from agent's audio response if available
-    audio_url = None
-    if decision.get("audio_base64"):
-        audio_url = f"data:audio/mpeg;base64,{decision['audio_base64']}"
-    
     dialogue = DialoguePayload(
         characterName=settings.character_name,
         expression=decision.get("expression", "neutral"),
         text=decision["text"],
-        audioUrl=audio_url,
     )
     logger.info("[analyze] triggering dialogue: %r", dialogue.text)
-
     background.add_task(_deliver, dialogue)
+    if payload.tier == 3:
+        background.add_task(twitter_poster.post_mischief_tweet, payload.active_window, payload.summary)
     return AnalyzeResponse(triggered=True, dialogue=dialogue)
 
 
 @router.post("/trigger", response_model=AnalyzeResponse)
 async def trigger(background: BackgroundTasks):
-    """Force a dialogue with a canned payload — useful for testing without the desktop capture loop."""
-    decision = await elevenlabs_agent.decide(
-        summary="User is sitting at their computer doing something",
-        vision_context="No screenshot available",
-        active_window="unknown",
-    )
+    """Force a dialogue — useful for testing without the desktop capture loop."""
+    try:
+        decision = await elevenlabs_agent.decide(
+            summary="User is sitting at their computer doing something",
+            vision_context="No screenshot available",
+            active_window="unknown",
+            tier=2,
+        )
+    except Exception as e:
+        logger.error("[trigger] elevenlabs_agent.decide failed: %s", e)
+        decision = {}
 
-    if not decision.get("triggered"):
-        decision["triggered"] = True
-        decision.setdefault("expression", "smug")
-        decision.setdefault("text", "I see you.")
-
-    audio_url = None
-    if decision.get("audio_base64"):
-        audio_url = f"data:audio/mpeg;base64,{decision['audio_base64']}"
+    decision["triggered"] = True
+    decision.setdefault("expression", "smug")
+    decision.setdefault("text", "I see you.")
 
     dialogue = DialoguePayload(
         characterName=settings.character_name,
-        expression=decision.get("expression", "neutral"),
+        expression=decision["expression"],
         text=decision["text"],
-        audioUrl=audio_url,
+    )
+    background.add_task(_deliver, dialogue)
+    return AnalyzeResponse(triggered=True, dialogue=dialogue)
+
+
+# ── Camila's conversation endpoints (stateful multi-turn via partial_conversation_history) ──
+
+@router.post("/conversation/init")
+async def conversation_init():
+    """Clear conversation history and start a fresh session."""
+    elevenlabs_conversation.reset_conversation()
+    return {"status": "ok", "history_length": 0}
+
+
+@router.post("/conversation/reset")
+async def conversation_reset():
+    """Alias for /conversation/init."""
+    elevenlabs_conversation.reset_conversation()
+    return {"status": "ok"}
+
+
+@router.get("/conversation/history")
+async def conversation_history():
+    """Return the current in-memory conversation history."""
+    return {"history": elevenlabs_conversation.get_history()}
+
+
+@router.post("/conversation/message", response_model=AnalyzeResponse)
+async def conversation_message(payload: UserMessagePayload, background: BackgroundTasks):
+    """
+    Send a user message using stateful multi-turn conversation history.
+    Each call appends to history so the agent remembers prior turns.
+    """
+    logger.info("[conversation_message] user said: %.100s", payload.text)
+    try:
+        agent_response = await elevenlabs_conversation.send_user_message(payload.text)
+    except Exception as e:
+        logger.error("[conversation_message] failed: %s", e)
+        return AnalyzeResponse(triggered=False)
+
+    dialogue = DialoguePayload(
+        characterName=settings.character_name,
+        expression="neutral",
+        text=agent_response.get("text", ""),
     )
     background.add_task(_deliver, dialogue)
     return AnalyzeResponse(triggered=True, dialogue=dialogue)
 
 
 async def _deliver(dialogue: DialoguePayload) -> None:
-    # If agent didn't provide audio, generate it with TTS
     if not dialogue.audioUrl:
         try:
-            audio_url = await asyncio.get_event_loop().run_in_executor(
-                None, elevenlabs_tts.synthesize, dialogue.text
-            )
+            loop = asyncio.get_running_loop()
+            audio_url = await loop.run_in_executor(None, elevenlabs_tts.synthesize, dialogue.text)
             dialogue.audioUrl = audio_url
             logger.info("[deliver] TTS ready (%d bytes)", len(audio_url))
         except Exception as e:
             logger.warning("[deliver] TTS failed, pushing dialogue without audio: %s", e)
-
-    try:
-        await desktop.push_dialogue(dialogue)
-        logger.info("[deliver] pushed to desktop")
-    except Exception as e:
-        logger.error("[deliver] desktop push failed: %s", e)
-    logger.info("[analyze] triggering dialogue: %r", dialogue.text)
-
-    background.add_task(_deliver, dialogue)
-    return AnalyzeResponse(triggered=True, dialogue=dialogue)
-
-
-@router.post("/trigger", response_model=AnalyzeResponse)
-async def trigger(background: BackgroundTasks):
-    """Force a dialogue with a canned payload — useful for testing without the desktop capture loop."""
-    decision = await gemini.decide(
-        summary="User is sitting at their computer doing something",
-        vision_context="No screenshot available",
-        active_window="unknown",
-        tier=2,
-    )
-
-    if not decision.get("triggered"):
-        decision["triggered"] = True
-        decision.setdefault("expression", "smug")
-        decision.setdefault("text", "I see you.")
-
-    dialogue = DialoguePayload(
-        characterName=settings.character_name,
-        expression=decision.get("expression", "neutral"),
-        text=decision["text"],
-    )
-    background.add_task(_deliver, dialogue)
-    return AnalyzeResponse(triggered=True, dialogue=dialogue)
-
-
-async def _deliver(dialogue: DialoguePayload) -> None:
-    try:
-        audio_url = await asyncio.get_event_loop().run_in_executor(
-            None, elevenlabs_tts.synthesize, dialogue.text
-        )
-        dialogue.audioUrl = audio_url
-        logger.info("[deliver] TTS ready (%d bytes)", len(audio_url))
-    except Exception as e:
-        logger.warning("[deliver] TTS failed, pushing dialogue without audio: %s", e)
 
     try:
         await desktop.push_dialogue(dialogue)

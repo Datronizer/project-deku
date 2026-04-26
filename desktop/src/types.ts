@@ -7,9 +7,7 @@ export interface DialoguePayload {
   audioUrl?: string
 }
 
-export interface AppSettings {
-  summarizer: 'gemma' | 'simple'
-}
+export interface AppSettings {}
 
 export interface DebugState {
   keyCount: number

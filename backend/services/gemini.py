@@ -3,7 +3,6 @@ import logging
 from google import genai
 from google.genai import types
 from config import settings
-from models import Expression
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +38,13 @@ Keep it 1–2 sentences. Be specific and a little judgmental — but playful, no
 Available expressions: neutral, mad, smug, surprised.
 """
 
+_SYSTEM_REPLY = """\
+You are a mischievous AI gremlin living inside someone's computer.
+The user just talked back to you. Respond in character — chaotic, teasing, maybe a little surprised they replied.
+Keep it 1–2 sentences. Be punchy and specific.
+Available expressions: neutral, mad, smug, surprised.
+"""
+
 _SYSTEMS = {1: _SYSTEM_TIER1, 2: _SYSTEM_TIER2, 3: _SYSTEM_TIER3}
 
 _SCHEMA = {
@@ -51,10 +57,16 @@ _SCHEMA = {
     "required": ["triggered", "expression", "text"],
 }
 
+_GEN_CONFIG = types.GenerateContentConfig(
+    response_mime_type="application/json",
+    response_schema=_SCHEMA,
+)
+
+
 async def decide(summary: str, vision_context: str, active_window: str, tier: int = 2) -> dict:
     """
-    Returns {triggered: bool, expression: Expression, text: str}.
-    For Tier 1 and Tier 3, triggered is always forced True by the caller.
+    Returns {triggered: bool, expression: str, text: str}.
+    Tier 1 and Tier 3 always trigger; Tier 2 triggers ~40% of the time.
     """
     system = _SYSTEMS.get(tier, _SYSTEM_TIER2)
 
@@ -64,7 +76,7 @@ Activity summary: {summary}
 Active window: {active_window}
 
 Make a funny, teasing comment about what the user is doing right now.
-Return JSON matching this schema: {json.dumps(_SCHEMA)}
+Return JSON matching the schema.
 """
     elif tier == 3:
         prompt = f"""\
@@ -75,7 +87,7 @@ What's on their screen right now:
 
 Call them out specifically on what they're doing — reference what you can actually see on screen.
 Be sarcastic and knowing, but keep it 1–2 sentences.
-Return JSON matching this schema: {json.dumps(_SCHEMA)}
+Return JSON matching the schema.
 """
     else:
         prompt = f"""\
@@ -87,7 +99,7 @@ Screen contents:
 Decide whether to interrupt the user right now.
 - Interrupt ~40% of the time. Don't interrupt if they seem stressed or in a call.
 - If triggered, write a single punchy in-character line reacting to EXACTLY what they're doing.
-- Return JSON matching this schema: {json.dumps(_SCHEMA)}
+- Return JSON matching the schema.
 """
 
     logger.info("[gemini] tier%d decide — window=%r summary=%.80s", tier, active_window, summary)
@@ -95,10 +107,7 @@ Decide whether to interrupt the user right now.
         resp = await _client.aio.models.generate_content(
             model="gemini-2.5-flash",
             contents=[system, prompt],
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=_SCHEMA,
-            ),
+            config=_GEN_CONFIG,
         )
     except Exception:
         logger.exception("[gemini] generate_content failed")
@@ -111,4 +120,32 @@ Decide whether to interrupt the user right now.
         decision.get("expression"),
         decision.get("text", ""),
     )
+    return decision
+
+
+async def reply(user_text: str) -> dict:
+    """
+    Returns {triggered: True, expression: str, text: str}.
+    Called when the user talks back to Deku via voice.
+    """
+    prompt = f"""\
+The user just said: "{user_text}"
+
+Respond to them in character. Always reply (triggered must be true).
+Return JSON matching the schema.
+"""
+    logger.info("[gemini] reply — user=%.80s", user_text)
+    try:
+        resp = await _client.aio.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[_SYSTEM_REPLY, prompt],
+            config=_GEN_CONFIG,
+        )
+    except Exception:
+        logger.exception("[gemini] reply failed")
+        raise
+
+    decision = json.loads(resp.text)
+    decision["triggered"] = True
+    logger.info("[gemini] reply: expression=%s text=%.120s", decision.get("expression"), decision.get("text", ""))
     return decision
