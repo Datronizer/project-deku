@@ -58,6 +58,7 @@ Create a `.env` file in `backend/`:
 ```
 GEMINI_API_KEY=
 ELEVENLABS_API_KEY=
+ELEVENLABS_AGENT_ID=
 AUTH0_DOMAIN=
 AUTH0_CLIENT_ID=
 AUTH0_CLIENT_SECRET=
@@ -111,7 +112,13 @@ uvicorn main:app --reload
 
 **Tailwind:** v4 via `@tailwindcss/vite` plugin (already installed in `desktop/`).
 
-**Backend modules:** `config.py` (pydantic-settings), `models.py` (shared Pydantic types), `services/vision.py`, `services/gemini.py`, `services/elevenlabs_tts.py`, `services/desktop.py`, `routers/analyze.py`, `main.py`.
+**ElevenLabs server-side agent call:** Use `AsyncElevenLabs.conversational_ai.agents.simulate_conversation(agent_id, simulation_specification=ConversationSimulationSpecification(simulated_user_config=AgentConfig(first_message=prompt)), new_turns_limit=1)` — find the `role='agent'` turn in `result.simulated_conversation` for the response text.
+
+**ElevenLabs `useConversationStatus` + `useEffect` guard:** Status starts `"disconnected"` → `"connecting"` → `"connected"` (`"disconnecting"` is filtered by the SDK). Never use `finally` to reset a connection mutex — the SDK fires `onStatusChange("connecting")` synchronously, queuing an effect re-run before `finally` executes, causing rapid-fire fetches. Reset the mutex only on explicit failure; reset it again when `status === 'connected'` to allow future reconnects.
+
+**Backend integration tests:** `cd backend && pytest tests/test_connections.py -v` — skip Gemma (requires Ollama): add `-k "not gemma"`.
+
+**Backend modules:** `config.py` (pydantic-settings), `models.py` (shared Pydantic types), `services/vision.py`, `services/elevenlabs_agent.py`, `services/elevenlabs_tts.py`, `services/gemini.py` (Gemma fallback only), `services/desktop.py`, `routers/analyze.py`, `routers/agent.py`, `main.py`.
 
 ## Git Conventions
 
