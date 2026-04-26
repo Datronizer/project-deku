@@ -29,7 +29,7 @@ export class SimpleSummarizer implements Summarizer {
 
 // --- Gemma via ollama REST API ---
 
-const GEMMA_MODEL = 'gemma3:4b'
+const GEMMA_MODEL = 'gemma4:2b'
 
 export class GemmaSummarizer implements Summarizer {
   private available: boolean | null = null

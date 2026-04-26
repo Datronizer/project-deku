@@ -1,11 +1,21 @@
 import { createRequire } from 'node:module'
 import { backend } from '../server.js'
-import { GemmaSummarizer, type EventLog, type Summarizer } from './summarizer.js'
+import { GemmaSummarizer, SimpleSummarizer, type EventLog, type Summarizer } from './summarizer.js'
 import { URGENT_PATTERNS } from './patterns.js'
+import { loadSettings } from '../settings.js'
 
 const require = createRequire(import.meta.url)
 
-const summarizer: Summarizer = new GemmaSummarizer()
+function makeSummarizer(): Summarizer {
+  return loadSettings().summarizer === 'simple' ? new SimpleSummarizer() : new GemmaSummarizer()
+}
+
+let summarizer: Summarizer = makeSummarizer()
+
+export function reloadSummarizer() {
+  summarizer = makeSummarizer()
+  console.log(`[deku] summarizer reloaded: ${loadSettings().summarizer}`)
+}
 
 // ── Tier intervals & cooldowns ─────────────────────────────────────────────
 const T1_MIN_MS  = 25 * 60_000      // Tier 1: random 25–45 min surprise

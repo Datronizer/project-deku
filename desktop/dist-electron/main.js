@@ -48,7 +48,7 @@ class SimpleSummarizer {
     return `User ${activity} in ${window} over the last ${log.durationSeconds}s`;
   }
 }
-const GEMMA_MODEL = "gemma3:4b";
+const GEMMA_MODEL = "gemma4:2b";
 class GemmaSummarizer {
   constructor() {
     __publicField(this, "available", null);
@@ -79,10 +79,37 @@ class GemmaSummarizer {
     }
   }
 }
+const URGENT_PATTERNS = [
+  // Social media
+  { pattern: /\btwitter\b|\bx\.com\b/i, category: "social" },
+  { pattern: /\binstagram\b/i, category: "social" },
+  { pattern: /\btiktok\b/i, category: "social" },
+  { pattern: /\bfacebook\b/i, category: "social" },
+  { pattern: /\breddit\b/i, category: "social" },
+  { pattern: /\blinkedin\b/i, category: "social" },
+  { pattern: /\bsnapchat\b/i, category: "social" },
+  // Streaming / video
+  { pattern: /\byoutube\b/i, category: "streaming" },
+  { pattern: /\bnetflix\b/i, category: "streaming" },
+  { pattern: /\btwitch\b/i, category: "streaming" },
+  { pattern: /\bhulu\b/i, category: "streaming" },
+  { pattern: /disney\+|disney plus/i, category: "streaming" },
+  // Gaming
+  { pattern: /\bsteam\b/i, category: "gaming" },
+  { pattern: /\bepic games\b/i, category: "gaming" },
+  { pattern: /\bgog\b/i, category: "gaming" },
+  { pattern: /league of legends/i, category: "gaming" },
+  { pattern: /\bminecraft\b/i, category: "gaming" },
+  { pattern: /\bvalorant\b/i, category: "gaming" },
+  { pattern: /\broblox\b/i, category: "gaming" }
+];
 const require$1 = createRequire(import.meta.url);
 const summarizer = new GemmaSummarizer();
-const MIN_INTERVAL_MS = 5 * 6e4;
-const MAX_INTERVAL_MS = 10 * 6e4;
+const T1_MIN_MS = 25 * 6e4;
+const T1_MAX_MS = 45 * 6e4;
+const T1_COOLDOWN_MS = 20 * 6e4;
+const T2_INTERVAL_MS = 10 * 6e4;
+const T3_COOLDOWN_MS = 3 * 6e4;
 const MAX_WINDOW_HISTORY = 8;
 let keyCount = 0;
 let mouseClicks = 0;
@@ -90,6 +117,8 @@ const windowTitles = [];
 let lastWindow = "";
 let lastSummary = "";
 let lastCycleTime = null;
+let lastTier1Time = 0;
+const lastTier3CategoryTime = /* @__PURE__ */ new Map();
 function resetLog() {
   keyCount = 0;
   mouseClicks = 0;
@@ -102,8 +131,16 @@ function recordWindow(title) {
   windowTitles.push(title);
   if (windowTitles.length > MAX_WINDOW_HISTORY) windowTitles.shift();
 }
+function snapshotLog(durationMs) {
+  return {
+    keyCount,
+    mouseClicks,
+    windowTitles: [...windowTitles],
+    durationSeconds: durationMs / 1e3
+  };
+}
 async function startCapture() {
-  const { uIOhook, UiohookKey } = require$1("uiohook-napi");
+  const { uIOhook } = require$1("uiohook-napi");
   uIOhook.on("keydown", () => {
     keyCount++;
   });
@@ -115,52 +152,83 @@ async function startCapture() {
   setInterval(async () => {
     try {
       const win2 = await activeWin();
-      if (win2) recordWindow(win2.title ?? win2.owner.name);
+      if (win2) {
+        const title = win2.title ?? win2.owner.name;
+        recordWindow(title);
+        checkTier3(title);
+      }
     } catch {
     }
   }, 3e3);
-  const scheduleNext = () => {
-    const delay = MIN_INTERVAL_MS + Math.random() * (MAX_INTERVAL_MS - MIN_INTERVAL_MS);
-    setTimeout(() => {
-      void runCycle().then(scheduleNext);
-    }, delay);
-  };
-  scheduleNext();
+  startTier1();
+  startTier2();
   console.log("[deku] capture started");
 }
+function startTier1() {
+  const delay = T1_MIN_MS + Math.random() * (T1_MAX_MS - T1_MIN_MS);
+  setTimeout(async () => {
+    const now = Date.now();
+    if (now - lastTier1Time >= T1_COOLDOWN_MS) {
+      const log = snapshotLog(delay);
+      resetLog();
+      lastTier1Time = Date.now();
+      await runCycle(log, 1);
+    }
+    startTier1();
+  }, delay);
+}
+function startTier2() {
+  setInterval(async () => {
+    const log = snapshotLog(T2_INTERVAL_MS);
+    resetLog();
+    await runCycle(log, 2);
+  }, T2_INTERVAL_MS);
+}
+function checkTier3(title) {
+  for (const { pattern, category } of URGENT_PATTERNS) {
+    if (!pattern.test(title)) continue;
+    const now = Date.now();
+    if (now - (lastTier3CategoryTime.get(category) ?? 0) < T3_COOLDOWN_MS) return;
+    lastTier3CategoryTime.set(category, now);
+    console.log(`[deku] tier3 — ${category} detected: "${title}"`);
+    const log = snapshotLog(0);
+    void runCycle(log, 3);
+    return;
+  }
+}
 async function triggerCycle() {
-  return runCycle();
+  const log = snapshotLog(T2_INTERVAL_MS);
+  resetLog();
+  return runCycle(log, 2);
 }
 function getDebugState() {
+  const now = Date.now();
   return {
     keyCount,
     mouseClicks,
     windowTitles: [...windowTitles],
     lastWindow,
     lastSummary,
-    lastCycleTime
+    lastCycleTime,
+    tier3Cooldowns: Object.fromEntries(
+      [...lastTier3CategoryTime.entries()].map(([cat, t]) => [
+        cat,
+        Math.max(0, Math.ceil((t + T3_COOLDOWN_MS - now) / 1e3))
+      ])
+    )
   };
 }
-async function runCycle() {
-  const log = {
-    keyCount,
-    mouseClicks,
-    windowTitles: [...windowTitles],
-    durationSeconds: MAX_INTERVAL_MS / 1e3
-  };
-  resetLog();
-  const [summary, screenshot] = await Promise.all([
-    summarizer.summarize(log),
-    takeScreenshot()
-  ]);
+async function runCycle(log, tier) {
+  const summary = await summarizer.summarize(log);
   lastSummary = summary;
   lastCycleTime = (/* @__PURE__ */ new Date()).toISOString();
   const activeWindow = log.windowTitles.at(-1) ?? "unknown";
-  console.log(`[deku] cycle — "${summary}"`);
+  console.log(`[deku] tier${tier} — "${summary}"`);
+  const screenshot = tier === 1 ? "" : await takeScreenshot();
   try {
-    await backend.analyze({ summary, active_window: activeWindow, screenshot_b64: screenshot });
+    await backend.analyze({ summary, active_window: activeWindow, screenshot_b64: screenshot, tier });
   } catch (err) {
-    console.warn("[deku] /analyze POST failed:", err);
+    console.warn(`[deku] tier${tier} /analyze failed:`, err);
   }
 }
 async function takeScreenshot() {

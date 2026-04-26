@@ -3,7 +3,8 @@ import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import http from 'node:http'
-import { startCapture, triggerCycle, getDebugState, captureScreenshot } from './capture/index.js'
+import { startCapture, triggerCycle, getDebugState, captureScreenshot, reloadSummarizer } from './capture/index.js'
+import { loadSettings, saveSettings } from './settings.js'
 
 const require = createRequire(import.meta.url)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -76,12 +77,19 @@ function createTray() {
   tray.on('click', () => tray?.popUpContextMenu())
 }
 
-// When renderer dismisses dialogue or debug screen, restore mouse passthrough
+// When renderer dismisses dialogue or settings screen, restore mouse passthrough
 ipcMain.on('dismiss-dialogue', () => {
   win?.setIgnoreMouseEvents(true, { forward: true })
 })
-ipcMain.on('dismiss-debug', () => {
+ipcMain.on('dismiss-settings', () => {
   win?.setIgnoreMouseEvents(true, { forward: true })
+})
+
+// Settings IPC
+ipcMain.handle('get-settings', () => loadSettings())
+ipcMain.on('save-settings', (_event, incoming) => {
+  saveSettings(incoming)
+  reloadSummarizer()
 })
 
 // Small HTTP server so the backend can push dialogue events
@@ -144,12 +152,15 @@ app.whenReady().then(() => {
     void triggerCycle()
   })
 
-  // Ctrl+Shift+7 — toggle debug overlay (no screenshot)
+  // Ctrl+Shift+7 — toggle settings/debug overlay
   globalShortcut.register('CommandOrControl+Shift+7', () => {
-    console.log('[deku] debug screen')
+    console.log('[deku] settings screen')
     if (win) {
       win.setIgnoreMouseEvents(false)
-      win.webContents.send('show-debug', { ...getDebugState(), screenshotB64: null })
+      win.webContents.send('show-settings', {
+        debugState: getDebugState(),
+        settings: loadSettings(),
+      })
     }
   })
 
