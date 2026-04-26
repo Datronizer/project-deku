@@ -21,7 +21,8 @@ export function reloadSummarizer() {
 const T1_MIN_MS  = 25 * 60_000      // Tier 1: random 25–45 min surprise
 const T1_MAX_MS  = 45 * 60_000
 const T1_COOLDOWN_MS = 20 * 60_000  // prevent accidental double-fire
-const T2_INTERVAL_MS = 10 * 60_000  // Tier 2: fixed 10 min screen observer
+const T2_MIN_MS = 5_000             // Tier 2: every 5-10 seconds for constant feedback
+const T2_MAX_MS = 10_000
 const T3_COOLDOWN_MS =  3 * 60_000  // Tier 3: per-category cooldown
 const MAX_WINDOW_HISTORY = 8
 
@@ -100,11 +101,16 @@ function startTier1() {
 
 // ── Tier 2: screen observer (screenshot + Vision API, ~40% trigger) ────────
 function startTier2() {
-  setInterval(async () => {
-    const log = snapshotLog(T2_INTERVAL_MS)
-    resetLog()
-    await runCycle(log, 2)
-  }, T2_INTERVAL_MS)
+  const scheduleNext = () => {
+    const interval = T2_MIN_MS + Math.random() * (T2_MAX_MS - T2_MIN_MS)
+    setTimeout(async () => {
+      const log = snapshotLog(interval)
+      resetLog()
+      await runCycle(log, 2)
+      scheduleNext()
+    }, interval)
+  }
+  scheduleNext()
 }
 
 // ── Tier 3: urgent window detection ───────────────────────────────────────
@@ -123,7 +129,7 @@ function checkTier3(title: string) {
 
 // ── Exports ────────────────────────────────────────────────────────────────
 export async function triggerCycle() {
-  const log = snapshotLog(T2_INTERVAL_MS)
+  const log = snapshotLog((T2_MIN_MS + T2_MAX_MS) / 2)
   resetLog()
   return runCycle(log, 2)
 }

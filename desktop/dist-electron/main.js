@@ -1,11 +1,12 @@
 var __defProp = Object.defineProperty;
 var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
-import { ipcMain, app, BrowserWindow, globalShortcut, screen, nativeImage, Tray, Menu } from "electron";
+import { app, ipcMain, BrowserWindow, globalShortcut, screen, nativeImage, Tray, Menu } from "electron";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import http from "node:http";
+import fs from "node:fs";
 const BACKEND_URL = process.env.VITE_BACKEND_URL ?? "http://localhost:8000";
 const OLLAMA_URL = "http://localhost:11434";
 async function get(baseUrl, path2) {
@@ -103,12 +104,35 @@ const URGENT_PATTERNS = [
   { pattern: /\bvalorant\b/i, category: "gaming" },
   { pattern: /\broblox\b/i, category: "gaming" }
 ];
+const DEFAULTS = { summarizer: "gemma" };
+function settingsPath() {
+  return path.join(app.getPath("userData"), "deku-settings.json");
+}
+function loadSettings() {
+  try {
+    const raw = fs.readFileSync(settingsPath(), "utf8");
+    return { ...DEFAULTS, ...JSON.parse(raw) };
+  } catch {
+    return { ...DEFAULTS };
+  }
+}
+function saveSettings(s) {
+  fs.writeFileSync(settingsPath(), JSON.stringify(s, null, 2));
+}
 const require$1 = createRequire(import.meta.url);
-const summarizer = new GemmaSummarizer();
+function makeSummarizer() {
+  return loadSettings().summarizer === "simple" ? new SimpleSummarizer() : new GemmaSummarizer();
+}
+let summarizer = makeSummarizer();
+function reloadSummarizer() {
+  summarizer = makeSummarizer();
+  console.log(`[deku] summarizer reloaded: ${loadSettings().summarizer}`);
+}
 const T1_MIN_MS = 25 * 6e4;
 const T1_MAX_MS = 45 * 6e4;
 const T1_COOLDOWN_MS = 20 * 6e4;
-const T2_INTERVAL_MS = 10 * 6e4;
+const T2_MIN_MS = 5e3;
+const T2_MAX_MS = 1e4;
 const T3_COOLDOWN_MS = 3 * 6e4;
 const MAX_WINDOW_HISTORY = 8;
 let keyCount = 0;
@@ -178,11 +202,16 @@ function startTier1() {
   }, delay);
 }
 function startTier2() {
-  setInterval(async () => {
-    const log = snapshotLog(T2_INTERVAL_MS);
-    resetLog();
-    await runCycle(log, 2);
-  }, T2_INTERVAL_MS);
+  const scheduleNext = () => {
+    const interval = T2_MIN_MS + Math.random() * (T2_MAX_MS - T2_MIN_MS);
+    setTimeout(async () => {
+      const log = snapshotLog(interval);
+      resetLog();
+      await runCycle(log, 2);
+      scheduleNext();
+    }, interval);
+  };
+  scheduleNext();
 }
 function checkTier3(title) {
   for (const { pattern, category } of URGENT_PATTERNS) {
@@ -197,7 +226,7 @@ function checkTier3(title) {
   }
 }
 async function triggerCycle() {
-  const log = snapshotLog(T2_INTERVAL_MS);
+  const log = snapshotLog((T2_MIN_MS + T2_MAX_MS) / 2);
   resetLog();
   return runCycle(log, 2);
 }
@@ -302,8 +331,13 @@ function createTray() {
 ipcMain.on("dismiss-dialogue", () => {
   win == null ? void 0 : win.setIgnoreMouseEvents(true, { forward: true });
 });
-ipcMain.on("dismiss-debug", () => {
+ipcMain.on("dismiss-settings", () => {
   win == null ? void 0 : win.setIgnoreMouseEvents(true, { forward: true });
+});
+ipcMain.handle("get-settings", () => loadSettings());
+ipcMain.on("save-settings", (_event, incoming) => {
+  saveSettings(incoming);
+  reloadSummarizer();
 });
 function startDialogueServer() {
   const server2 = http.createServer((req, res) => {
@@ -357,10 +391,13 @@ app.whenReady().then(() => {
     void triggerCycle();
   });
   globalShortcut.register("CommandOrControl+Shift+7", () => {
-    console.log("[deku] debug screen");
+    console.log("[deku] settings screen");
     if (win) {
       win.setIgnoreMouseEvents(false);
-      win.webContents.send("show-debug", { ...getDebugState(), screenshotB64: null });
+      win.webContents.send("show-settings", {
+        debugState: getDebugState(),
+        settings: loadSettings()
+      });
     }
   });
   globalShortcut.register("CommandOrControl+Shift+0", () => {
