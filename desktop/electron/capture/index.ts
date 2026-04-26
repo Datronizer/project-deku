@@ -14,6 +14,8 @@ let keyCount = 0
 let mouseClicks = 0
 const windowTitles: string[] = []
 let lastWindow = ''
+let lastSummary = ''
+let lastCycleTime: string | null = null
 
 function resetLog() {
   keyCount = 0
@@ -56,6 +58,21 @@ export async function triggerCycle() {
   return runCycle()
 }
 
+export function getDebugState() {
+  return {
+    keyCount,
+    mouseClicks,
+    windowTitles: [...windowTitles],
+    lastWindow,
+    lastSummary,
+    lastCycleTime,
+  }
+}
+
+export async function captureScreenshot(): Promise<string> {
+  return takeScreenshot()
+}
+
 async function runCycle() {
   const log: EventLog = {
     keyCount,
@@ -69,6 +86,8 @@ async function runCycle() {
     summarizer.summarize(log),
     takeScreenshot(),
   ])
+  lastSummary = summary
+  lastCycleTime = new Date().toISOString()
 
   const activeWindow = log.windowTitles.at(-1) ?? 'unknown'
   console.log(`[deku] cycle — "${summary}"`)

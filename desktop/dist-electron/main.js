@@ -1,7 +1,7 @@
 var __defProp = Object.defineProperty;
 var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
-import { ipcMain, app, BrowserWindow, globalShortcut, nativeImage, Tray, Menu } from "electron";
+import { ipcMain, app, BrowserWindow, globalShortcut, screen, nativeImage, Tray, Menu } from "electron";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -87,6 +87,8 @@ let keyCount = 0;
 let mouseClicks = 0;
 const windowTitles = [];
 let lastWindow = "";
+let lastSummary = "";
+let lastCycleTime = null;
 function resetLog() {
   keyCount = 0;
   mouseClicks = 0;
@@ -122,6 +124,19 @@ async function startCapture() {
 async function triggerCycle() {
   return runCycle();
 }
+function getDebugState() {
+  return {
+    keyCount,
+    mouseClicks,
+    windowTitles: [...windowTitles],
+    lastWindow,
+    lastSummary,
+    lastCycleTime
+  };
+}
+async function captureScreenshot() {
+  return takeScreenshot();
+}
 async function runCycle() {
   const log = {
     keyCount,
@@ -134,6 +149,8 @@ async function runCycle() {
     summarizer.summarize(log),
     takeScreenshot()
   ]);
+  lastSummary = summary;
+  lastCycleTime = (/* @__PURE__ */ new Date()).toISOString();
   const activeWindow = log.windowTitles.at(-1) ?? "unknown";
   console.log(`[deku] cycle — "${summary}"`);
   try {
@@ -162,7 +179,12 @@ const DIALOGUE_PORT = 7777;
 let win;
 let tray = null;
 function createWindow() {
+  const { x, y, width, height } = screen.getPrimaryDisplay().bounds;
   win = new BrowserWindow({
+    x,
+    y,
+    width,
+    height,
     transparent: true,
     frame: false,
     alwaysOnTop: true,
@@ -206,6 +228,9 @@ function createTray() {
   tray.on("click", () => tray == null ? void 0 : tray.popUpContextMenu());
 }
 ipcMain.on("dismiss-dialogue", () => {
+  win == null ? void 0 : win.setIgnoreMouseEvents(true, { forward: true });
+});
+ipcMain.on("dismiss-debug", () => {
   win == null ? void 0 : win.setIgnoreMouseEvents(true, { forward: true });
 });
 function startDialogueServer() {
@@ -254,6 +279,22 @@ app.whenReady().then(() => {
   globalShortcut.register("CommandOrControl+Shift+9", () => {
     console.log("[deku] manual trigger");
     void triggerCycle();
+  });
+  globalShortcut.register("CommandOrControl+Shift+8", () => {
+    console.log("[deku] screenshot trigger");
+    void captureScreenshot().then((screenshotB64) => {
+      if (win) {
+        win.setIgnoreMouseEvents(false);
+        win.webContents.send("show-debug", { ...getDebugState(), screenshotB64 });
+      }
+    });
+  });
+  globalShortcut.register("CommandOrControl+Shift+7", () => {
+    console.log("[deku] debug screen");
+    if (win) {
+      win.setIgnoreMouseEvents(false);
+      win.webContents.send("show-debug", { ...getDebugState(), screenshotB64: null });
+    }
   });
   globalShortcut.register("CommandOrControl+Shift+0", () => {
     console.log("[deku] panic button pressed — quitting");

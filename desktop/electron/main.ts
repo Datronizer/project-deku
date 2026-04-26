@@ -1,9 +1,9 @@
-import { app, BrowserWindow, ipcMain, globalShortcut, Tray, Menu, nativeImage } from 'electron'
+import { app, BrowserWindow, ipcMain, globalShortcut, Tray, Menu, nativeImage, screen } from 'electron'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import http from 'node:http'
-import { startCapture, triggerCycle } from './capture/index.js'
+import { startCapture, triggerCycle, getDebugState, captureScreenshot } from './capture/index.js'
 
 const require = createRequire(import.meta.url)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -22,7 +22,12 @@ let win: BrowserWindow | null
 let tray: Tray | null = null
 
 function createWindow() {
+  const { x, y, width, height } = screen.getPrimaryDisplay().bounds
   win = new BrowserWindow({
+    x,
+    y,
+    width,
+    height,
     transparent: true,
     frame: false,
     alwaysOnTop: true,
@@ -71,8 +76,11 @@ function createTray() {
   tray.on('click', () => tray?.popUpContextMenu())
 }
 
-// When renderer dismisses dialogue, restore mouse passthrough
+// When renderer dismisses dialogue or debug screen, restore mouse passthrough
 ipcMain.on('dismiss-dialogue', () => {
+  win?.setIgnoreMouseEvents(true, { forward: true })
+})
+ipcMain.on('dismiss-debug', () => {
   win?.setIgnoreMouseEvents(true, { forward: true })
 })
 
@@ -128,6 +136,26 @@ app.whenReady().then(() => {
   globalShortcut.register('CommandOrControl+Shift+9', () => {
     console.log('[deku] manual trigger')
     void triggerCycle()
+  })
+
+  // Ctrl+Shift+8 — take screenshot and show debug overlay with it
+  globalShortcut.register('CommandOrControl+Shift+8', () => {
+    console.log('[deku] screenshot trigger')
+    void captureScreenshot().then(screenshotB64 => {
+      if (win) {
+        win.setIgnoreMouseEvents(false)
+        win.webContents.send('show-debug', { ...getDebugState(), screenshotB64 })
+      }
+    })
+  })
+
+  // Ctrl+Shift+7 — toggle debug overlay (no screenshot)
+  globalShortcut.register('CommandOrControl+Shift+7', () => {
+    console.log('[deku] debug screen')
+    if (win) {
+      win.setIgnoreMouseEvents(false)
+      win.webContents.send('show-debug', { ...getDebugState(), screenshotB64: null })
+    }
   })
 
   // Ctrl+Shift+0 — panic button
