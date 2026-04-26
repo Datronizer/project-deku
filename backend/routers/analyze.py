@@ -35,6 +35,8 @@ async def user_message(payload: UserMessagePayload, background: BackgroundTasks)
 
 @router.post("", response_model=AnalyzeResponse)
 async def analyze(payload: ActivityPayload, background: BackgroundTasks):
+    elevenlabs_agent.reset_history()  # Optional: reset conversation history on each new activity for a cleaner demo experience; comment out to maintain rolling memory across activities.
+
     logger.info(
         "[analyze] cycle — window=%r summary=%.100s screenshot=%dKB",
         payload.active_window,

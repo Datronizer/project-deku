@@ -7,8 +7,10 @@ class Settings(BaseSettings):
     elevenlabs_api_key: str
     elevenlabs_agent_id: str
     desktop_url: str = "http://127.0.0.1:7777"
-    character_name: str = "bakugou"
-    elevenlabs_voice_id: str = "WJSEjVRZrzK981mDoQMm"  # Kacchan try (prayge so it works)
+    character_name: str = "bakugou"  # or deku 
+    elevenlabs_voice_id: str = "LmaDy3lud1QUGySUPYq2"  # voice elevenlabs
+    # kacchan voice: LmaDy3lud1QUGySUPYq2
+    # deku voice: WJSEjVRZrzK981mDoQMm
 
     # Auth0
     auth0_domain: str = ""
