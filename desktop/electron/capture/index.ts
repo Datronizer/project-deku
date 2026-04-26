@@ -1,22 +1,29 @@
 import { createRequire } from 'node:module'
 import { backend } from '../server.js'
-import { GemmaSummarizer, SimpleSummarizer, type EventLog, type Summarizer } from './summarizer.js'
+import { GemmaSummarizer, type EventLog, type Summarizer } from './summarizer.js'
+import { URGENT_PATTERNS } from './patterns.js'
 
 const require = createRequire(import.meta.url)
 
-// Swap to SimpleSummarizer here if Gemma is causing problems
 const summarizer: Summarizer = new GemmaSummarizer()
 
-const MIN_INTERVAL_MS = 5 * 60_000
-const MAX_INTERVAL_MS = 10 * 60_000
+// ── Tier intervals & cooldowns ─────────────────────────────────────────────
+const T1_MIN_MS  = 25 * 60_000      // Tier 1: random 25–45 min surprise
+const T1_MAX_MS  = 45 * 60_000
+const T1_COOLDOWN_MS = 20 * 60_000  // prevent accidental double-fire
+const T2_INTERVAL_MS = 10 * 60_000  // Tier 2: fixed 10 min screen observer
+const T3_COOLDOWN_MS =  3 * 60_000  // Tier 3: per-category cooldown
 const MAX_WINDOW_HISTORY = 8
 
+// ── State ──────────────────────────────────────────────────────────────────
 let keyCount = 0
 let mouseClicks = 0
 const windowTitles: string[] = []
 let lastWindow = ''
 let lastSummary = ''
 let lastCycleTime: string | null = null
+let lastTier1Time = 0
+const lastTier3CategoryTime = new Map<string, number>()
 
 function resetLog() {
   keyCount = 0
@@ -32,38 +39,87 @@ function recordWindow(title: string) {
   if (windowTitles.length > MAX_WINDOW_HISTORY) windowTitles.shift()
 }
 
-export async function startCapture() {
-  // uiohook-napi for keystrokes + mouse clicks
-  const { uIOhook, UiohookKey } = require('uiohook-napi') as typeof import('uiohook-napi')
+function snapshotLog(durationMs: number): EventLog {
+  return {
+    keyCount,
+    mouseClicks,
+    windowTitles: [...windowTitles],
+    durationSeconds: durationMs / 1000,
+  }
+}
 
+// ── Startup ────────────────────────────────────────────────────────────────
+export async function startCapture() {
+  const { uIOhook } = require('uiohook-napi') as typeof import('uiohook-napi')
   uIOhook.on('keydown', () => { keyCount++ })
   uIOhook.on('click', () => { mouseClicks++ })
   uIOhook.start()
 
-  // active-win polls for window title changes
   const activeWin = require('active-win') as typeof import('active-win')
   setInterval(async () => {
     try {
       const win = await activeWin()
-      if (win) recordWindow(win.title ?? win.owner.name)
+      if (win) {
+        const title = win.title ?? win.owner.name
+        recordWindow(title)
+        checkTier3(title)
+      }
     } catch { /* ignore */ }
   }, 3_000)
 
-  // random 5–10 min analysis cycle
-  const scheduleNext = () => {
-    const delay = MIN_INTERVAL_MS + Math.random() * (MAX_INTERVAL_MS - MIN_INTERVAL_MS)
-    setTimeout(() => { void runCycle().then(scheduleNext) }, delay)
-  }
-  scheduleNext()
+  startTier1()
+  startTier2()
 
   console.log('[deku] capture started')
 }
 
+// ── Tier 1: random surprise (no screenshot, always fires) ─────────────────
+function startTier1() {
+  const delay = T1_MIN_MS + Math.random() * (T1_MAX_MS - T1_MIN_MS)
+  setTimeout(async () => {
+    const now = Date.now()
+    if (now - lastTier1Time >= T1_COOLDOWN_MS) {
+      const log = snapshotLog(delay)
+      resetLog()
+      lastTier1Time = Date.now()
+      await runCycle(log, 1)
+    }
+    startTier1()
+  }, delay)
+}
+
+// ── Tier 2: screen observer (screenshot + Vision API, ~40% trigger) ────────
+function startTier2() {
+  setInterval(async () => {
+    const log = snapshotLog(T2_INTERVAL_MS)
+    resetLog()
+    await runCycle(log, 2)
+  }, T2_INTERVAL_MS)
+}
+
+// ── Tier 3: urgent window detection ───────────────────────────────────────
+function checkTier3(title: string) {
+  for (const { pattern, category } of URGENT_PATTERNS) {
+    if (!pattern.test(title)) continue
+    const now = Date.now()
+    if (now - (lastTier3CategoryTime.get(category) ?? 0) < T3_COOLDOWN_MS) return
+    lastTier3CategoryTime.set(category, now)
+    console.log(`[deku] tier3 — ${category} detected: "${title}"`)
+    const log = snapshotLog(0)
+    void runCycle(log, 3)
+    return  // only one category per window change
+  }
+}
+
+// ── Exports ────────────────────────────────────────────────────────────────
 export async function triggerCycle() {
-  return runCycle()
+  const log = snapshotLog(T2_INTERVAL_MS)
+  resetLog()
+  return runCycle(log, 2)
 }
 
 export function getDebugState() {
+  const now = Date.now()
   return {
     keyCount,
     mouseClicks,
@@ -71,6 +127,12 @@ export function getDebugState() {
     lastWindow,
     lastSummary,
     lastCycleTime,
+    tier3Cooldowns: Object.fromEntries(
+      [...lastTier3CategoryTime.entries()].map(([cat, t]) => [
+        cat,
+        Math.max(0, Math.ceil((t + T3_COOLDOWN_MS - now) / 1000)),
+      ])
+    ),
   }
 }
 
@@ -78,29 +140,22 @@ export async function captureScreenshot(): Promise<string> {
   return takeScreenshot()
 }
 
-async function runCycle() {
-  const log: EventLog = {
-    keyCount,
-    mouseClicks,
-    windowTitles: [...windowTitles],
-    durationSeconds: MAX_INTERVAL_MS / 1000,
-  }
-  resetLog()
-
-  const [summary, screenshot] = await Promise.all([
-    summarizer.summarize(log),
-    takeScreenshot(),
-  ])
+// ── Core cycle ─────────────────────────────────────────────────────────────
+async function runCycle(log: EventLog, tier: 1 | 2 | 3) {
+  const summary = await summarizer.summarize(log)
   lastSummary = summary
   lastCycleTime = new Date().toISOString()
 
   const activeWindow = log.windowTitles.at(-1) ?? 'unknown'
-  console.log(`[deku] cycle — "${summary}"`)
+  console.log(`[deku] tier${tier} — "${summary}"`)
+
+  // Tier 1 skips screenshot (text-only, cheapest)
+  const screenshot = tier === 1 ? '' : await takeScreenshot()
 
   try {
-    await backend.analyze({ summary, active_window: activeWindow, screenshot_b64: screenshot })
+    await backend.analyze({ summary, active_window: activeWindow, screenshot_b64: screenshot, tier })
   } catch (err) {
-    console.warn('[deku] /analyze POST failed:', err)
+    console.warn(`[deku] tier${tier} /analyze failed:`, err)
   }
 }
 

@@ -24,6 +24,7 @@ export interface AnalyzeRequest {
   summary: string
   active_window: string
   screenshot_b64: string
+  tier: 1 | 2 | 3
 }
 
 export const backend = {
