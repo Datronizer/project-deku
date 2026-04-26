@@ -1,6 +1,8 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
+    google_cloud_project: str
+    google_cloud_location: str = "us-central1"
     elevenlabs_api_key: str
     elevenlabs_agent_id: str
     desktop_url: str = "http://127.0.0.1:7777"

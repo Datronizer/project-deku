@@ -7,7 +7,11 @@ from models import Expression
 
 logger = logging.getLogger(__name__)
 
-_client = genai.Client(api_key=settings.gemini_api_key)
+_client = genai.Client(
+    vertexai=True,
+    project=settings.google_cloud_project,
+    location=settings.google_cloud_location,
+)
 
 _SYSTEM_TIER1 = """\
 You are a mischievous AI gremlin who randomly pops up inside someone's computer to tease them.
