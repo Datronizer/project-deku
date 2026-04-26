@@ -66,8 +66,11 @@ Return JSON matching this schema: {json.dumps(_SCHEMA)}
         prompt = f"""\
 The user just switched to: {active_window}
 Activity summary: {summary}
+What's on their screen right now:
+{vision_context}
 
-React to the user switching to this app or site with a sarcastic, knowing comment.
+Call them out specifically on what they're doing — reference what you can actually see on screen.
+Be sarcastic and knowing, but keep it 1–2 sentences.
 Return JSON matching this schema: {json.dumps(_SCHEMA)}
 """
     else:
